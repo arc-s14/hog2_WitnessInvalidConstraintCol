@@ -314,8 +314,22 @@ enum WitnessInferenceRule {
     kInsideSolutionTreeRule,
     kRegionCompletionRule,
     kAlongThePathRule,
+    kTowardsGoalRule, //comment - why wasn't this already added here? 
     kInferenceRuleCount [[maybe_unused]]
 };
+
+//comment
+std::string GetRuleNameByID(int ruleID) {
+    switch (ruleID) {
+        case kSeparationRule: return "R1 Spr";
+        case kPathConstraintRule: return "R2 PC";
+        case kInsideSolutionTreeRule: return "R3 IST";
+        case kRegionCompletionRule: return "R4 RC";
+        case kAlongThePathRule: return "[AtP]";
+        case kTowardsGoalRule: return "R6 TG";
+        default: return "UnkRule";
+    }
+}
 
 inline std::ostream &operator<<(std::ostream &os, WitnessInferenceRule wir)
 {
@@ -335,6 +349,25 @@ inline std::ostream &operator<<(std::ostream &os, WitnessInferenceRule wir)
             return os;
     }
 }
+/*
+template<int width, int height>
+std::unordered_map<int,
+        std::function<ActionType(const SearchEnvironment<WitnessState<width, height>, WitnessAction> &,
+                                 WitnessState<width, height> &, const WitnessAction &)>>
+witnessInferenceRules =
+{
+    { kSeparationRule, std::function(SeparationRule<width, height>) },
+    { kPathConstraintRule, std::function(PathConstraintRule<width, height>) },
+    { kInsideSolutionTreeRule, std::function(InsideSolutionTreeRule<width, height>) },
+    { kRegionCompletionRule, std::function(RegionCompletionRule<width, height>) },
+    { kAlongThePathRule, std::function(AlongThePathRule<width, height>) },
+     //comment
+    { kTowardsGoalRule, std::function<ActionType(const SearchEnvironment<WitnessState<width, height>, WitnessAction>&,
+                                             WitnessState<width, height>&,
+                                             const WitnessAction&)>(TowardsGoalRule<width, height>) }
+};
+
+
 
 template<int width, int height>
 std::unordered_map<int,
@@ -347,6 +380,38 @@ witnessInferenceRules =
     { kInsideSolutionTreeRule, std::function(InsideSolutionTreeRule<width, height>) },
     { kRegionCompletionRule, std::function(RegionCompletionRule<width, height>) },
     { kAlongThePathRule, std::function(AlongThePathRule<width, height>) },
+};
+*/
+
+//comment
+template<int width, int height>
+std::unordered_map<int,
+    std::function<ActionType(const SearchEnvironment<WitnessState<width, height>, WitnessAction>&,
+                             WitnessState<width, height>&,
+                             const WitnessAction&)>>
+witnessInferenceRules =
+{
+    { kSeparationRule, std::function<ActionType(const SearchEnvironment<WitnessState<width, height>, WitnessAction>&,
+                                                WitnessState<width, height>&,
+                                                const WitnessAction&)>(SeparationRule<width, height>) },
+    { kPathConstraintRule, std::function<ActionType(const SearchEnvironment<WitnessState<width, height>, WitnessAction>&,
+                                                    WitnessState<width, height>&,
+                                                    const WitnessAction&)>(PathConstraintRule<width, height>) },
+    { kInsideSolutionTreeRule, std::function<ActionType(const SearchEnvironment<WitnessState<width, height>, WitnessAction>&,
+                                                        WitnessState<width, height>&,
+                                                        const WitnessAction&)>(InsideSolutionTreeRule<width, height>) },
+    { kRegionCompletionRule, std::function<ActionType(const SearchEnvironment<WitnessState<width, height>, WitnessAction>&,
+                                                      WitnessState<width, height>&,
+                                                      const WitnessAction&)>(RegionCompletionRule<width, height>) },
+    { kAlongThePathRule, std::function<ActionType(const SearchEnvironment<WitnessState<width, height>, WitnessAction>&,
+                                                  WitnessState<width, height>&,
+                                                  const WitnessAction&)>(AlongThePathRule<width, height>) },
+                                                  
+    //comment
+    { kTowardsGoalRule, std::function<ActionType(const SearchEnvironment<WitnessState<width, height>, WitnessAction>&,
+                                             WitnessState<width, height>&,
+                                             const WitnessAction&)>(TowardsGoalRule<width, height>) }
+
 };
 
 #endif /* THE_WITNESS_EDITOR_INCLUDE_WITNESS_INFERENCE_RULE_H */

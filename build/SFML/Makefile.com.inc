@@ -60,10 +60,15 @@ endif
 #ifeq ("$(OPENGL)", "STUB")
 #COMMON_CXXFLAGS += -I$(ROOT)/gui/ -I$(ROOT)/gui/GL/ -DNO_OPENGL
 #else
+
 #COMMON_CXXFLAGS += -I/usr/include/GL
 #COMMON_LNFLAGS +=  -lGL -lGLU -lglut
 #endif
 #endif
+
+COMMON_CXXFLAGS += -I$(ROOT)/papers/TheWitnessEditor/include
+COMMON_CXXFLAGS += -I$(ROOT)/envutil
+
 
 DBG_CXXFLAGS = $(PROJ_DBG_CXXFLAGS) $(COMMON_CXXFLAGS) -g
 REL_CXXFLAGS = $(PROJ_REL_CXXFLAGS) $(COMMON_CXXFLAGS) -g -O3 #-DNDEBUG

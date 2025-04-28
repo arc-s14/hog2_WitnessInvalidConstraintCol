@@ -22,6 +22,425 @@
 #include <mutex>
 std::mutex lock;
 
+
+
+
+
+//comment
+
+//arcirules start
+
+//#include "WitnessInferenceRule.h" 
+//#include "/home/arc/hog2/papers/TheWitnessEditor/include/WitnessInferenceRule.h" //don't use local path //comment
+//#include "/home/arc/hog2/envutil/PuzzleInferenceRule.h"
+#include "WitnessInferenceRule.h" //don't use local path //comment
+#include "PuzzleInferenceRule.h"
+
+#include "sstream"
+
+
+
+//
+
+//mid- global
+
+// Constants for the number of rules and actions
+const int NUM_RULES = 5; // Number of rules (0, 1, 2, ...)
+const int NUM_ACTIONS = kWitnessActionCount; // Actions: Left, Right, Up, Down
+
+int violationCount = 0; //stand in for percentages of rules learned
+
+//comment //global
+//std::vector< std::vector<std::string> > ruleTable(NUM_RULES, std::vector<std::string>(NUM_ACTIONS, "  ? ")); //unknown
+
+bool tableUpdated = true; // I'm keeping it true at all times for now
+
+int NUM_COLS  = 2; //like must, cant, unknown - last one isn't needed
+//std::vector<std::vector<int>> mathTable(NUM_COLS, std::vector<int>(NUM_RULES));
+
+
+//
+
+
+//void TestRules(Witness<4, 4> &puzzle, WitnessState<4, 4> &state, const std::vector<WitnessAction> &actions);
+
+//std::vector<SolutionTreeNode> solutionTree;
+
+//bool runTestRules = false; 
+
+
+//global //comment
+int mustTakeSkipCounter = 0;
+//#include <fstream> // Include this for file handling
+
+//file stream to keep it open during execution
+std::ofstream logFile("mouse.txt", std::ios::trunc); // Open in trunc mode to clear file
+std::ofstream logFile_two("path_taken.txt", std::ios::trunc); // all visited nodes //this logs all the stuff multiple times dummy, plus you have this process elsewhere already
+
+
+
+std::vector<std::pair<int, int>> nodes; // vector to store nodes (visited??)
+int mustTakeViolationCount = 0;
+int cantTakeViolationCount = 0;
+//std::ostringstream viewportStream;
+
+//arcirules end
+
+
+std::vector<SolutionTreeNode> solutionTree; //need the global solutionTree
+
+//comment [NEW]
+
+int RULE_ROW = 6; // make this dynamic
+
+int MOVE_COL = kWitnessActionCount;
+int RULE_COL = 4; //violation, correct move, percentage based on occurence or something- so 3 cols //+1 for perc of skill
+
+//working vectors
+std::vector < std::vector <std::string>> MoveTable (RULE_ROW, std::vector<std::string>(MOVE_COL,"_"));
+std::vector < std::vector <int>> RuleTable (RULE_ROW, std::vector<int>(RULE_COL,0));
+
+//std::vector < std::vector <int>> MoveTable (RULE_ROW, std::vector<int>(MOVE_COL,0));
+//comment [NEW END]
+
+
+//global table
+
+
+#include <vector>
+#include <string>
+#include "Graphics.h" // Replace with the actual header file for your Graphics namespace
+
+
+//working here too
+
+//others
+
+//global //workingdir //useless del
+int prev_directionMoved = -1; //int directionMoved is the curr and this is bfr the curr
+std::string prev_directionLabel = "U";
+
+std::vector<std::string> path_taken; //full path, even backtracking
+
+
+int mustTakeLogger = -1 ; //if must take is violated, don't count any cannot takes after that move, all moves are auto cant_take //1 is active so dont log, -1 is not active so log
+int ruleAPLogger = -1; //if violated with must_cross then we use these TWO vars to ignore future cant_takes
+
+//
+
+
+
+
+//print rule table too
+
+
+// for collecting all the learning rates for the rules
+// std::vector<std::vector<int>> LearningTable;
+//std::vector<std::vector<float>> LearningTable(6, std::vector<float>(4, 0));
+std::vector<std::vector<float>> LearningTable(6, std::vector<float>(4, 0.0f));
+
+
+// initial values for the Learning part for the rules
+float r1_learn = .5;
+float r2_learn = 0.4; //setting at random for now // [working] gotta set up the different cases and how to treat them
+
+float r4_learn = .3;
+float r5_learn = 0.15;
+float r6_learn = 0.10;
+int switch_rules = 5;
+
+
+void PrintLearningTable(std::vector<std::vector<float>>& table, //removed const - uhh check again later?? [fix]
+                Graphics::Display &d, 
+                const Graphics::point& startPoint, 
+                double fontSize, 
+                double cellWidth, 
+                double cellHeight,
+                double timer,
+                int T_row,
+                int T_col) 
+{
+    double x = startPoint.x;
+    double y = startPoint.y;
+
+    // Column headers for learning, transition, guess, and slip
+    const std::vector<std::string> colHeaders = {"L", "T", "G", "S"};
+
+    // Ensure table has exactly 6 rows and 4 columns
+    if (table.size() != 6 || table[0].size() != 4) {
+        std::cerr << "err: table not 6x4." << std::endl;
+        return;
+    }
+
+
+	if (switch_rules == 5) {  
+        for (int row = 0; row < table.size(); row++) {
+            for (int col = 0; col < table[0].size(); col++) {  // ✅ Include `col` in loop
+                if (col == 0) {  // Only update the first column (Learning values)
+                    if (row == 0)
+                        table[row][col] = r1_learn;
+                    else if (row == 1)
+                        table[row][col] = r2_learn;
+
+                    else if (row == 3)
+                        table[row][col] = r4_learn;
+                    else if (row == 4)
+                        table[row][col] = r5_learn;
+                    else if (row == 5)
+                        table[row][col] = r6_learn;
+                }
+            }
+        }
+        switch_rules = 10;  // ✅ Prevent future updates
+    }
+
+
+    // Rows represent different rules, printing from bottom to top
+    for (int row = table.size() - 1; row >= 0; --row) {
+        double cellY = y - ((table.size() - row) * cellHeight); // Reverse row order
+
+        for (int col = -1; col < static_cast<int>(table[0].size()); ++col) {
+            double cellX = x + (col + 0.5) * cellWidth; // Offset for row headers
+
+            if (col == -1) {
+                // not printing rule names (row headers)
+                // d.DrawText(GetRuleNameByID(row).c_str(), {x, cellY}, Colors::darkgreen, fontSize, 0);
+            } 
+            else {
+                float value = table[row][col];
+				
+				std::ostringstream stream_rules;
+				stream_rules.precision(1);
+				stream_rules << std::fixed << value;
+
+				d.DrawText((stream_rules.str()).c_str(), {cellX, cellY}, Colors::darkblue, fontSize*0.5, 0);
+				//continue;
+
+				//doing some cals
+				/*
+
+					LearningTable[0][0] = (prev_L + (1 - prev_L) * p_T) * 100.0f; //prev_L is learningTable[0][0]
+					p_T = corr attempts / total occurences
+
+				
+				*/
+				
+                //d.DrawText(std::to_string(value).c_str(), {cellX, cellY}, Colors::blue, fontSize, 0);
+            }
+        }
+    }
+
+    // Print column headers (LAST, so they appear on top)
+    double headerY = y - ((table.size() + 1) * cellHeight); // Slightly above the first row
+    for (int col = 0; col < static_cast<int>(table[0].size()); ++col) {
+        double cellX = x + (col + 0.5) * cellWidth;
+        d.DrawText(colHeaders[col].c_str(), {cellX, headerY}, Colors::darkgreen, fontSize, 0);
+    }
+
+
+}
+
+
+
+void PrintRuleTable(const std::vector<std::vector<int>>& table, //[NOW using] not using this table - using RuleTable instead
+                Graphics::Display &d, 
+                const Graphics::point& startPoint, 
+                double fontSize, 
+                double cellWidth, 
+                double cellHeight,
+				double timer,
+				int T_row,
+				int T_col) 
+{
+    //start coor
+    double x = startPoint.x;
+    double y = startPoint.y;
+
+    //we're printing table rows from bottom to top btw
+    for (int row = RuleTable.size() - 1; row >= 0; --row) { 
+        double cellY = y - ((RuleTable.size() - row) * cellHeight); // reverse row order
+
+        for (int col = -1; col < static_cast<int>(RuleTable[0].size()); ++col) { 
+
+			int corr = RuleTable[row][0];  // pos occurrences
+			int incorr = RuleTable[row][1]; // neg 
+			int total = corr + incorr; //why not just use [row][2]??
+
+			if (total > 0) {
+				RuleTable[row][2] = total;  // Store total occurrences
+				RuleTable[row][3] = (corr * 100) / (total); // store percentage
+
+				LearningTable [row][1] = RuleTable[row][3] / 100.0f; //updating transition along with the "perc"
+				//	LearningTable[0][0] = (prev_L + (1 - prev_L) * p_T) ; //make sure it doesn't exceed 1.0?? 
+				//		prev_L is learningTable[0][0] for rule 1 at r0,c0
+				
+				// too messy
+				//LearningTable [row][0] = LearningTable[row][0] + (1-LearningTable[row][0]) * LearningTable [row][1];
+				float p_T = LearningTable[row][1]; // Transition probability (already 0-1 after fix)
+				float prev_L = LearningTable[row][0]; // Previous learning probability
+
+				LearningTable[row][0] = prev_L + (1 - prev_L) * p_T;
+				//LearningTable[row][0] = 5; //why is this not working??
+
+			}
+			/*
+			
+
+			if (LearningTable[row][1] != 0.0f) {  // Only update if transition probability is nonzero
+				float p_T = LearningTable[row][1];  // Transition probability
+				float prev_L = LearningTable[row][0];  // Previous learning probability
+
+				LearningTable[row][0] = prev_L + (1 - prev_L) * p_T;  // Apply learning update
+
+				std::cout << "update LearningTable[" << row << "][0]: " << LearningTable[row][0] << std::endl;
+			}
+			
+			*/
+
+
+
+            double cellX = x + (col + 1) * cellWidth; // change fr row headers
+
+            if (col == -1) {
+                //(rule names)
+                d.DrawText(GetRuleNameByID(row).c_str(), {x, cellY}, Colors::orange, fontSize, 0);
+            } 
+            else {
+                //content
+                int value = RuleTable[row][col];
+                d.DrawText(std::to_string(value).c_str(), {cellX, cellY}, Colors::black, fontSize, 0);
+            }
+        }
+    }
+
+    //show col headers AFTER all the rows
+    double headerY = y - ((RuleTable.size() + 1) * cellHeight); //slightly above the first row
+    const std::vector<std::string> colHeaders = {"Pos", "Neg", "Occur", "Perc"};
+
+    for (int col = 0; col < static_cast<int>(RuleTable[0].size()); ++col) {
+        double cellX = x + (col + 1) * cellWidth; 
+        std::string colHeader = col < colHeaders.size() ? colHeaders[col] : "Unknown";
+        d.DrawText(colHeader.c_str(), {cellX, headerY}, Colors::orange, fontSize, 0);
+    }
+
+
+	double learningTableX = x + (RuleTable[0].size() + 1) * cellWidth;
+	PrintLearningTable(LearningTable, d, {learningTableX, y}, fontSize, cellWidth, cellHeight, timer, 5, 3);
+
+
+
+}
+
+//print move table
+
+
+//std::vector <int> APcolumns (4, -1); //4 cols, UDLR (ignoring start and end)
+static std::vector <int> APcolumns_main = {0, 1, 2, 3}; //no ini
+
+void PrintTable(const std::vector<std::vector<std::string>>& table, 
+                Graphics::Display &d, 
+                const Graphics::point& startPoint, 
+                double fontSize, 
+                double cellWidth, 
+                double cellHeight,
+				double timer,
+				int T_row,
+				int T_col) 
+{
+    //start here
+	double x = startPoint.x;
+	double y = startPoint.y;
+
+	//col headers (printed LAST)
+	const std::vector<std::string> colHeaders = {"Up", "Down", "Left", "Right", "Start", "End"};
+
+	//rows from bottom to top
+	for (int row = table.size() - 1; row >= 0; --row) { 
+		double cellY = y - ((table.size() - row) * cellHeight); //rev row order
+
+		for (int col = -1; col < static_cast<int>(table[0].size()); ++col) { 
+			double cellX = x + (col + 1) * cellWidth; //odfset for row headers
+
+
+			if (col == -1) {
+				//rules
+				d.DrawText(GetRuleNameByID(row).c_str(), {x, cellY}, Colors::blue, fontSize, 0);
+			} 
+			else {
+
+				float shift_icons = fontSize / 8;
+				//vals
+				if ( (table[row][col]) == "M" )
+				{
+					//void Graphics::Display::FillCircle(Graphics::rect r, rgbColor c)
+					d.FillCircle({cellX+shift_icons+shift_icons, cellY-shift_icons}, fontSize/1.5, Colors::darkgreen); //shift neg cus that's how the grid works
+
+				}
+
+				else if(table[row][col]=="S") //should_take
+				{
+					d.FillSquare({cellX+shift_icons+shift_icons, cellY-shift_icons}, fontSize/1.5, Colors::bluegreen);
+
+				}
+				else if ( (table[row][col]) == "C" )
+				{
+					//for when we have AP - rule 5
+					if(row == 4)
+					{
+						//std::cout<< "\t\tadded AP col: "<<col; //see if we're adding the right cols 
+						//APcolumns.emplace_back(col);
+						d.FillSquare({cellX+shift_icons+shift_icons, cellY-shift_icons}, fontSize/1.5, Colors::orange);
+					}
+
+					//normal case
+					else
+					{
+						d.FillSquare({cellX+shift_icons+shift_icons, cellY-shift_icons}, fontSize/1.5, Colors::red);
+						//d.DrawText((table[row][col]).c_str(), {cellX, cellY}, Colors::red, fontSize, 0); //only show red C
+					}
+				}
+				else 
+				{
+					d.DrawText((table[row][col]).c_str(), {cellX+shift_icons, cellY}, Colors::black, fontSize, 0);
+					//d.FillNGon({cellX+shift_icons+shift_icons, cellY-shift_icons}, fontSize/1.1, 6, 0, Colors::gray); //to see how to "centre" icons
+					
+
+				}
+					
+			}
+		}
+	}
+
+	//print col headers (LAST, so they appear on top)
+	double headerY = y - ((table.size() + 1) * cellHeight); //slightly above the first row
+	for (int col = 0; col < static_cast<int>(table[0].size()); ++col) {
+		double cellX = x + (col + 1) * cellWidth; //offset row headers
+		d.DrawText(colHeaders[col].c_str(), {cellX, headerY}, Colors::blue, fontSize, 0);
+	}
+
+
+	//we place RuleTable below the MoveTable
+    double ruleTableX = x; // Align with MoveTable
+    double ruleTableY = y - (MoveTable.size() + 1) * cellHeight; // space below MoveTable
+
+	//PrintRuleTable(RuleTable, disp, -0.75, 0.05f, 0.2f, 0.1f, 7, RULE_ROW, RULE_COL);
+    PrintRuleTable(RuleTable, d, {ruleTableX, -ruleTableY}, fontSize, cellWidth, cellHeight, timer, T_row, T_col);
+
+}
+
+
+
+
+//global table end
+
+
+
+
+
+
+
+
+
 bool recording = false;
 bool parallel = false;
 // 2x2 + 5 (interesting)
@@ -1227,6 +1646,7 @@ void MyWindowHandler(unsigned long windowID, tWindowEventType eType)
 	{
 		printf("Window %ld destroyed\n", windowID);
 		RemoveFrameHandler(MyFrameHandler, windowID, 0);
+		RemoveFrameHandler(MySecondFrameHandler, windowID, nullptr);
 	}
 	else if (eType == kWindowCreated)
 	{
@@ -1235,15 +1655,36 @@ void MyWindowHandler(unsigned long windowID, tWindowEventType eType)
 
 		printf("Window %ld created\n", windowID);
 		InstallFrameHandler(MyFrameHandler, windowID, 0);
-		SetNumPorts(windowID, 1);
+		SetNumPorts(windowID, 2); //comment
+		ReinitViewports(windowID, {-1, -1, 0,1}, kScaleToSquare);
+		AddViewport(windowID, {0, -1, 1, 1}, kScaleToSquare);
+		InstallFrameHandler(MySecondFrameHandler, windowID, nullptr);
 
+		//printf("Window %ld created\n", windowID);
+		//InstallFrameHandler(MyFrameHandler, windowID, 0);
+		//SetNumPorts(windowID, 1);
+
+/*
 		w.SetStart(0, 0);
 		w.SetGoal(3, 5);
 //		w.AddCannotCrossConstraint(true, 0, 0);
 		w.AddSeparationConstraint(3, 3, Colors::blue);
 		w.AddSeparationConstraint(0, 3, Colors::blue);
-		w.AddSeparationConstraint(1, 3, Colors::black);
+		w.AddSeparationConstraint(1, 2, Colors::black);
 		w.AddStarConstraint(3, 1, Colors::black);
+
+*/
+///*
+		w.AddSeparationConstraint(2, 1, Colors::pink);
+		w.AddSeparationConstraint(2, 2, Colors::yellow);
+
+		//w.AddStarConstraint(1, 1, Colors::pink);
+		//w.AddStarConstraint(0, 1, Colors::pink);
+		//w.AddStarConstraint(1, 1, Colors::pink);
+		w.AddSeparationConstraint(1, 1, Colors::pink);
+		w.AddSeparationConstraint(1, 2, Colors::yellow);
+//*/
+
 //		w.AddTriangleConstraint(0, 0, 3);
 //		w.AddGoal(1, -1);
 //		w.AddGoal(-1, 1);
@@ -1313,13 +1754,162 @@ void MyWindowHandler(unsigned long windowID, tWindowEventType eType)
 }
 
 
+
+
+//comment
+
+//comment frame handler
 void MyFrameHandler(unsigned long windowID, unsigned int viewport, void *)
 {
+	if(viewport != 0)
+		return;
 	Graphics::Display &d = GetContext(windowID)->display;
 	iws.IncrementTime();
 	w.Draw(d);
 	w.Draw(d, iws);
 }
+
+
+
+void MySecondFrameHandler(unsigned long windowID, unsigned int viewport, void *)
+{
+	if(viewport != 1)
+		return;
+
+	Graphics::Display &disp = GetContext(windowID)->display;	
+	disp.FillRect({-1, -1, 1, 1}, Colors::white);
+
+	// to draw moves table
+	int RULE_ROW = witnessInferenceRules<puzzleWidth, puzzleHeight>.size(); //comment //dynamic rows 
+
+	
+	std::vector < std::vector <std::string>> MoveTable (RULE_ROW, std::vector<std::string>(MOVE_COL,".")); // placeholder, can be replaced with cant_take
+	//if i remove this & only use a global vector i get a segmentation error
+	//std::vector < std::vector <int>> MoveTable (RULE_ROW, std::vector<int>(MOVE_COL,0)); 
+
+	PrintTable(MoveTable, disp, -0.75, 0.05f, 0.2f, 0.1f, 7, RULE_ROW, MOVE_COL);
+
+	std::vector <int> APcolumns = APcolumns_main;
+
+	disp.DrawText("Must cross [green circle] ", {-0.75, 0.66}, Colors::darkgreen, 0.02f, 0);
+	disp.DrawText("Cant cross [red square] ", {-0.75, 0.69}, Colors::red, 0.02f, 0);
+	disp.DrawText("For [AP] only \n Violates AP/ Cant_cross [orange] ", {-0.75, 0.72}, Colors::orange, 0.02f, 0);
+	disp.DrawText("Rest [blue-green]", {-0.75, 0.75}, Colors::bluegreen, 0.02f, 0);
+
+
+
+
+	//curr state
+	WitnessState<puzzleWidth, puzzleHeight> currentState = iws.ws;
+
+	//get all acts
+	//MAKE SURE to work with solution paths only --- recheck thissss block
+	std::vector<WitnessAction> actions; //possble acts not taken or IR related acts (i.e., must_take, cant_take)
+	w.GetActions(currentState, actions);
+
+	//show all possible acts (before applying IRs)
+	//std::cout << "[possible actions: ";
+	for (const auto& action : actions) {
+		//std::cout << action << " ";
+	}
+	//std::cout << " ]\n";
+
+	//working with rules
+	//apply IRs and log results
+	std::unordered_map<WitnessAction, ActionType> filteredLogics;
+	std::vector<std::string> resultLog;
+
+	//working here
+
+	for (const auto& action : actions) 
+	{
+		ActionType overallResult = UNKNOWN;
+
+		for (const auto& [ruleID, ruleFunction] : witnessInferenceRules<puzzleWidth, puzzleHeight>) 
+		{
+			ActionType result = ruleFunction(w, iws.ws, action);
+			if (result == MUST_TAKE) {
+				//std::cout << "[must_take] " << action << " -> [rule] " << ruleID << ".\n";
+				
+				//MoveTable[0][1] += 1;  //replace 9 with result
+
+				// Access the numerical value
+				int actionValue = static_cast<int>(action);
+				//std::cout<<"rID: "<<ruleID<<" , actVal: "<<actionValue;
+				MoveTable[ruleID][actionValue] = "M"; //this is showing M so we can log- curr pos AND rule broken here //ideas//working
+				//RuleTable[ruleID][0] += 1; // this is tracking count, not violation or occurence
+
+				PrintTable(MoveTable, disp, -0.75, 0.05f, 0.2f, 0.1f, 7, RULE_ROW, MOVE_COL);
+				//PrintRuleTable(RuleTable, disp, -0.75, 0.05f, 0.2f, 0.1f, 7, RULE_ROW, RULE_COL);
+
+				
+
+			} else if (result == CANNOT_TAKE) {
+				//std::cout << "[cant_take] " << action << " -> [rule] " << ruleID << ".\n";
+
+				//MoveTable[3][2] += 1;  //replace 9 with result
+
+				int actionValue = static_cast<int>(action);
+
+
+				//rule 5 (but 4 as we start from 0), AP case
+				if(ruleID == 4)
+				{
+					//find the number in the vector
+					auto it = std::find(APcolumns.begin(), APcolumns.end(), actionValue);
+
+					//remove it
+					if (it != APcolumns.end()) {
+						APcolumns.erase(it);
+					}
+
+					//del
+					//remaining numbers or the "actValue" we need
+					for (int num : APcolumns) {
+						//std::cout << num << " ";
+						MoveTable[ruleID][num] = "S";  //should_take
+
+					}
+
+					//adding the cant_take parts too
+
+					MoveTable[ruleID][actionValue] = "C"; 
+
+					//del
+
+					//std::cout<< "\t act val : "<< actionValue;
+					//just no
+					//MoveTable[ruleID][actionValue] = "S"; //should_take or should take
+				}
+				else
+				{
+					//normal case
+					MoveTable[ruleID][actionValue] = "C"; 
+					//RuleTable[ruleID][0] += 1; // this is tracking count, not violation or occurence
+
+				}
+
+
+
+				PrintTable(MoveTable, disp, -0.75, 0.05f, 0.2f, 0.1f, 7, RULE_ROW, MOVE_COL);
+				//PrintRuleTable(RuleTable, disp, -0.75, 0.05f, 0.2f, 0.1f, 7, RULE_ROW, RULE_COL);
+			}
+		}
+	}
+
+
+
+
+
+
+}
+
+
+
+
+
+
+
 
 int MyCLHandler(char *argument[], int maxNumArgs)
 {
@@ -1456,12 +2046,278 @@ bool MyClickHandler(unsigned long, int, int, point3d p, tButtonType , tMouseEven
 			}
 		}
 	}
+
+	//use these to log dir moved
+	int currX, currY = 0;
+	int prevX, prevY = 0;
+
+
+
+	//[OLD mouse, drag, working here]
+
 	if (e == kMouseMove)
 	{
+		// Update interactive state based on mouse position
 		w.Move(p, iws);
-//		if (iws.ws.path.size() > 0)
-//			std::cout << iws.ws.path.back().first << ", " << iws.ws.path.back().second << "\n";
+
+		// log the current node
+		if (!iws.ws.path.empty()) {
+			auto [currX, currY] = iws.ws.path.back();
+			//std::cout << "Current Node: (" << currX << ", " << currY << ")\n";
+		}
+
+		bool shouldLog = false; // Flag to determine whether to log the node
+
+		// Check the current location
+		if (!iws.ws.path.empty()) {
+			auto [currX, currY] = iws.ws.path.back();
+
+			if (!nodes.empty()) {
+				auto [lastX, lastY] = nodes.back();
+
+				// avoid duplicate entries and add only new nodes
+				if (lastX != currX || lastY != currY) {
+					nodes.emplace_back(currX, currY); // add the current node to the nodes list
+					shouldLog = true;                //enbl logging for this node
+				}
+			} else {
+				//add the first node
+				nodes.emplace_back(currX, currY);
+				shouldLog = true;
+				std::cout << "First Node: (" << currX << ", " << currY << ")\n";
+				mustTakeViolationCount = 0; // Reset violation count
+				cantTakeViolationCount = 0;
+			}
+		}
+
+		// Initialize static vectors to track must_take directions and violated rules
+		static std::vector<int> mustTakeDirections;
+		static std::vector<int> violatedRules;
+
+		static std::vector<int> cantTakeDirections;
+		static std::vector<int> violatedRules_forCant;
+
+
+		if (shouldLog) {
+			auto [currX, currY] = nodes.back(); // Current node
+			auto [lastX, lastY] = (nodes.size() > 1) ? nodes[nodes.size() - 2] : std::make_pair(-1, -1);
+
+			//so this fucking works dummy
+			std::cout << "\n\t\t lastXY: " << lastX << ", " << lastY;
+			std::cout << "\n\t\t currXY: " << currX << ", " << currY; 
+			
+			// Determine direction moved and assign printable labels
+			int directionMoved = -1;
+			std::string directionLabel = "Unknown";
+
+			if (currX > lastX) {
+				prev_directionMoved = directionMoved;
+				prev_directionLabel = directionLabel;
+
+				directionMoved = 3;  // Right
+				directionLabel = "Right";
+			} else if (currX < lastX) {
+
+				prev_directionMoved = directionMoved;
+				prev_directionLabel = directionLabel;
+
+				directionMoved = 2;  // Left
+				directionLabel = "Left";
+			} else if (currY > lastY) {
+				
+				prev_directionMoved = directionMoved;
+				prev_directionLabel = directionLabel;
+
+				directionMoved = 0;  // Up
+				directionLabel = "Up";
+			} else if (currY < lastY) {
+				
+				prev_directionMoved = directionMoved;
+				prev_directionLabel = directionLabel;
+
+				directionMoved = 1;  // Down
+				directionLabel = "Down";
+			}
+
+			//path_taken.emplace_back(directionLabel); //logs multiple times/ repeats
+			/*
+			for(auto dir: path_taken)
+			{
+				logFile_two << "\t" << dir << ", ";
+			}
+			*/
+			
+			
+
+			//show the directionMoved and its label
+			std::cout << "\nDir  Moved: " << directionMoved << " (" << directionLabel << ")\n";
+
+			std::cout <<"\n\n last node (path): " << iws.ws.path.back().first << ", " <<iws.ws.path.back().second;
+
+
+			//check must_take compliance lol
+			if (!mustTakeDirections.empty() && !violatedRules.empty()) {
+				// If the moved direction is not in the must_take list, it's a violation
+				if (std::find(mustTakeDirections.begin(), mustTakeDirections.end(), directionMoved) == mustTakeDirections.end()) {
+					std::cout << "\n\n\tviolation: must_take dir not followed\n";
+					logFile << "\n\n\tviolation: must_take dir not followed\n";
+					std::cout << "\n\n\t rule : "<<GetRuleNameByID(violatedRules.back());
+
+					//make sure no other cant_takes are registered
+					mustTakeLogger = 1; 
+					ruleAPLogger = 1;
+
+
+
+					//MoveTable[violatedRules.back()][1] = "S";
+					
+					RuleTable[violatedRules.back()][1]++;  // add to neg col (must_take violated) //gotta remove this too if c_t shows CUS OF m_t violation
+
+					mustTakeViolationCount++;  // track viols
+					mustTakeDirections.clear();  // reset for next move
+					violatedRules.clear();
+				} else {
+					if (RuleTable[violatedRules.back()][0] + RuleTable[violatedRules.back()][1] < RuleTable[violatedRules.back()][2])
+						RuleTable[violatedRules.back()][0]++;  // add to pos col (must_take followed)
+					else
+					{
+						std::cout<< "\n\t_exceeds occur";
+					}
+				}
+			}
+
+			// same for cant_take
+			if (!cantTakeDirections.empty() && !violatedRules_forCant.empty()) {
+				// If the moved direction *is* in the cant_take list, it's a violation
+				if (std::find(cantTakeDirections.begin(), cantTakeDirections.end(), directionMoved) != cantTakeDirections.end()) {
+					std::cout << "\n\n\tviolation: cant_take dir taken\n";
+					logFile << "\n\n\tviolation: cant_take dir taken\n";
+
+					RuleTable[violatedRules_forCant.back()][1]++;  // add to neg colll (cant_take violated)
+
+					cantTakeViolationCount++;  // track violations - del redundant containers
+					cantTakeDirections.clear();
+					violatedRules_forCant.clear();
+				} else {
+					if(RuleTable[violatedRules_forCant.back()][0] + RuleTable[violatedRules_forCant.back()][1] < RuleTable[violatedRules_forCant.back()][2])
+						RuleTable[violatedRules_forCant.back()][0]++;  // add to pos col (cant_take followed)
+					else
+					{
+						std::cout<< "\n\t_exceeds occur";
+					}
+				}
+			}
+
+
+
+			
+
+			// Log possible actions
+			std::vector<WitnessAction> actions;
+			w.GetActions(iws.ws, actions);
+
+			logFile << "[";
+			for (size_t i = 0; i < actions.size(); ++i) {
+				logFile << actions[i];
+				if (i < actions.size() - 1) logFile << ", ";
+			}
+			logFile << "] ";
+
+			// Apply inference rules and log results
+			std::unordered_map<WitnessAction, ActionType> filteredLogics;
+			std::vector<std::string> resultLog;
+
+			for (const auto& action : actions) {
+				ActionType overallResult = UNKNOWN;
+
+				for (const auto& [ruleID, ruleFunction] : witnessInferenceRules<puzzleWidth, puzzleHeight>) {
+					ActionType result = ruleFunction(w, iws.ws, action);
+
+					if (result != UNKNOWN) {
+
+						if (result == CANNOT_TAKE) {
+
+							
+							
+							overallResult = CANNOT_TAKE;
+
+							if (mustTakeLogger == 1 && ruleAPLogger == 1) //we ignore cant_updates
+							{
+								std::cout<<"\n\n\t\t\tcant_take by default as m_t violated";
+								//mustTakeLogger = 0; // reset??
+								//ruleAPLogger = 0; // this is wrong man
+
+								//overallResult = UNKNOWN; // harsh idea
+								//overallResult = INCONSEQUENTIAL;  //comment
+
+								continue;
+							}
+							else
+							{
+								// Check if the player actually tried to take this action before adding
+								if (directionMoved == action) {  
+									cantTakeDirections.push_back(action);  // Track must_take violations
+									violatedRules_forCant.push_back(ruleID);
+
+									if (ruleID >= 0 && ruleID < NUM_RULES && action >= 0 && action < RULE_ROW) {
+										RuleTable[ruleID][2]++; // Increment CANNOT_TAKE count
+										
+										std::stringstream ss;
+										ss << action;
+									}
+								}
+							}
+							
+						}
+
+						if (result == MUST_TAKE) {
+							overallResult = MUST_TAKE;
+							//if (action != kEnd && action != kStart) { // Exclude END and START actions
+
+								// Only add the MUST_TAKE action if it's not already taken
+								if (std::find(mustTakeDirections.begin(), mustTakeDirections.end(), action) == mustTakeDirections.end()) {
+									mustTakeDirections.push_back(action);
+									violatedRules.push_back(ruleID);
+									std::cout << "\n\t\t\t logging rule for m_t: " <<GetRuleNameByID(ruleID);
+
+									if (ruleID >= 0 && ruleID < NUM_RULES && action >= 0 && action < RULE_ROW) {
+										RuleTable[ruleID][2]++; //increment MUST_TAKE occurence count
+
+										std::stringstream ss;
+										ss << action;
+									}
+								}
+							//}
+						}
+						
+
+					
+					}
+				}
+
+				filteredLogics[action] = overallResult;
+
+				// Prepare result string
+				std::string resultString = std::to_string(action) + " ";
+				resultString += (overallResult == MUST_TAKE ? "must_take" :
+								overallResult == CANNOT_TAKE ? "cant_take" : "unknown");
+				resultLog.push_back(resultString);
+			}
+
+			// Log filtered actions with results
+			logFile << "[";
+			for (size_t i = 0; i < resultLog.size(); ++i) {
+				logFile << resultLog[i];
+				if (i < resultLog.size() - 1) logFile << ", ";
+			}
+			logFile << "]\n";
+		}
 	}
+
+	//mouse, drag, working here
+
+
+	//mouse end, work
 
 	// Don't need any other mouse support
 	return true;
