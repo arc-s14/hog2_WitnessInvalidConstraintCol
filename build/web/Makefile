@@ -23,6 +23,9 @@ PROJECTS = \
   utils \
   apps/snakebird \
   apps/arm \
+  apps/witness_test \
+  demos/dynamic-phi \
+  papers/DSDWA \
   demos/fastmap \
   demos/pancake \
   demos/suboptimal-map \

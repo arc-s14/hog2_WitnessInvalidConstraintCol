@@ -251,6 +251,9 @@ static bool operator==(const WitnessState<width, height> &a, const WitnessState<
 template<int width, int height>
 class InteractiveWitnessState {
 public:
+
+    mutable int fracCycle = 0; 
+
     void Reset()
     {
         ws.Reset();
@@ -260,10 +263,18 @@ public:
 
     void IncrementTime()
     {
-        if (currState != kWaitingStart) return;
+        if (currState != kWaitingStart) 
+        {   
+            fracCycle += 1;
+            return;
+        }
         frac += 0.04;
-        if (frac > 3) frac = 0;
+        if (frac > 3) 
+        {
+            frac = 0;
+        }
     }
+
 
     WitnessState<width, height> ws;
     // for drawing

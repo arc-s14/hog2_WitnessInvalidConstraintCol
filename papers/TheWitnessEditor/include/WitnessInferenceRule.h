@@ -319,7 +319,7 @@ enum WitnessInferenceRule {
 };
 
 //comment
-std::string GetRuleNameByID(int ruleID) {
+inline std::string GetRuleNameByID(int ruleID) {
     switch (ruleID) {
         case kSeparationRule: return "R1 Spr";
         case kPathConstraintRule: return "R2 PC";
