@@ -1,0 +1,88 @@
+../../../../apps/witness/Driver.cpp:69:10: error: too few template arguments for class template 'map'
+   69 |     std::map<int, float> dirProbs; // 0=Up, 1=Down, L, R, inactive = -1
+      |          ^
+/home/arc/emsdk/upstream/emscripten/cache/sysroot/include/c++/v1/__tree:53:28: note: template is declared here
+   52 | template <class, class, class, class>
+      | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   53 | class _LIBCPP_TEMPLATE_VIS map;
+      |                            ^
+../../../../apps/witness/Driver.cpp:546:7: warning: unused variable 'new_sum' [-Wunused-variable]
+  546 |                 int new_sum = cant_counter * 0.06;
+      |                     ^~~~~~~
+../../../../apps/witness/Driver.cpp:2192:14: warning: unused variable 'overallResult' [-Wunused-variable]
+ 2192 |                 ActionType overallResult = UNKNOWN;
+      |                            ^~~~~~~~~~~~~
+../../../../apps/witness/Driver.cpp:2468:14: warning: unused variable '[currX, currY]' [-Wunused-variable]
+ 2468 |         auto [currX, currY] = iws.ws.path.back();
+      |              ^
+../../../../apps/witness/Driver.cpp:2696:24: warning: variable 'overallResult' set but not used [-Wunused-but-set-variable]
+ 2696 |             ActionType overallResult = UNKNOWN;
+      |                        ^
+../../../../apps/witness/Driver.cpp:2505:10: warning: unused variable 'time_ish' [-Wunused-variable]
+ 2505 |                 double time_ish = -9.0;
+      |                        ^~~~~~~~
+../../../../apps/witness/Driver.cpp:2454:6: warning: unused variable 'currX' [-Wunused-variable]
+ 2454 |         int currX, currY = 0;
+      |             ^~~~~
+../../../../apps/witness/Driver.cpp:2454:13: warning: unused variable 'currY' [-Wunused-variable]
+ 2454 |         int currX, currY = 0;
+      |                    ^~~~~
+../../../../apps/witness/Driver.cpp:2455:6: warning: unused variable 'prevX' [-Wunused-variable]
+ 2455 |         int prevX, prevY = 0;
+      |             ^~~~~
+../../../../apps/witness/Driver.cpp:2455:13: warning: unused variable 'prevY' [-Wunused-variable]
+ 2455 |         int prevX, prevY = 0;
+      |                    ^~~~~
+../../../../apps/witness/Driver.cpp:3557:12: warning: unused variable 'minCount' [-Wunused-variable]
+ 3557 |                 uint64_t minCount = allSolutions.size();
+      |                          ^~~~~~~~
+../../../../apps/witness/Driver.cpp:3558:7: warning: unused variable 'bestPathSize' [-Wunused-variable]
+ 3558 |                 int bestPathSize = 0;
+      |                     ^~~~~~~~~~~~
+../../../../apps/witness/Driver.cpp:3554:11: warning: unused variable 'total' [-Wunused-variable]
+ 3554 |         uint64_t total = 0;
+      |                  ^~~~~
+../../../../apps/witness/Driver.cpp:4012:59: warning: format specifies type 'int' but the argument has type 'size_type' (aka 'unsigned long') [-Wformat]
+ 4012 |                         printf("%llu of %llu [%d solutions]\n", rank, maxRank, best.size());
+      |                                               ~~                               ^~~~~~~~~~~
+      |                                               %zu
+In file included from ../../../../apps/witness/Driver.cpp:20:
+../../../../environments/Witness.h:4710:30: warning: unused variable 'point' [-Wunused-variable]
+ 4710 |             for (const auto &point : iws.ws.path)
+      |                              ^~~~~
+../../../../apps/witness/Driver.cpp:752:6: note: in instantiation of member function 'Witness<1, 2>::Draw' requested here
+  752 |                         p.Draw(d, p1);
+      |                           ^
+In file included from ../../../../apps/witness/Driver.cpp:20:
+../../../../environments/Witness.h:4710:30: warning: unused variable 'point' [-Wunused-variable]
+ 4710 |             for (const auto &point : iws.ws.path)
+      |                              ^~~~~
+../../../../apps/witness/Driver.cpp:796:6: note: in instantiation of member function 'Witness<1, 3>::Draw' requested here
+  796 |                         p.Draw(d, p1);
+      |                           ^
+In file included from ../../../../apps/witness/Driver.cpp:20:
+../../../../environments/Witness.h:4710:30: warning: unused variable 'point' [-Wunused-variable]
+ 4710 |             for (const auto &point : iws.ws.path)
+      |                              ^~~~~
+../../../../apps/witness/Driver.cpp:820:6: note: in instantiation of member function 'Witness<2, 2>::Draw' requested here
+  820 |                         p.Draw(d, p1);
+      |                           ^
+In file included from ../../../../apps/witness/Driver.cpp:20:
+../../../../environments/Witness.h:4710:30: warning: unused variable 'point' [-Wunused-variable]
+ 4710 |             for (const auto &point : iws.ws.path)
+      |                              ^~~~~
+../../../../apps/witness/Driver.cpp:853:6: note: in instantiation of member function 'Witness<3, 3>::Draw' requested here
+  853 |                         p.Draw(d, p1);
+      |                           ^
+In file included from ../../../../apps/witness/Driver.cpp:20:
+../../../../environments/Witness.h:4710:30: warning: unused variable 'point' [-Wunused-variable]
+ 4710 |             for (const auto &point : iws.ws.path)
+      |                              ^~~~~
+../../../../apps/witness/Driver.cpp:936:6: note: in instantiation of member function 'Witness<4, 4>::Draw' requested here
+  936 |                         p.Draw(d, p1);
+      |                           ^
+18 warnings and 1 error generated.
+make[2]: *** [../../Makefile.com.inc:54: ../../../../objs_html/witness_test.js/debug/apps/witness/Driver.o] Error 1
+/bin/sh: 4: exit: Illegal number: -1
+make[1]: *** [Makefile:113: debug] Error 2
+make: *** [Makefile:109: default] Error 2

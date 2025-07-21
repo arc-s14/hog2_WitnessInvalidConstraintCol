@@ -1216,13 +1216,24 @@ const int numRequiredPieces = 4; // 5
 const int numSeparationPieces = 4; // 3x4 + 6 [4]
 int currBoard = 0;
 
+
+
+//for web test
+
+// Jul 20
+std::vector<std::vector<Witness<4, 4>>> puzzleSet; // set of puzzles for 4x4 board which we will use for the lab test
+// Witness<4, 4> wp44; // a 4x4 board that we'll probably change as we keep solving // we'll use iws instead
+ InteractiveWitnessState<4, 4> iws4; // iws for wp44
+
+int whichPuzzle = 0; // variable we'll use to increment the puzzle
+int puzzleNum = 4; // fix at 4 if we have 4 puzzles
+bool redrawBackground = true; // this too?
+
+
 Witness<puzzleWidth, puzzleHeight> w;
 InteractiveWitnessState<puzzleWidth, puzzleHeight> iws;
 std::vector<Witness<puzzleWidth, puzzleHeight>> best;
 
-//for web test
-
-std::vector<std::vector<Witness<4, 4>>> firstSet;
 
 //std::vector<uint64_t> otherbest;
 
@@ -2524,6 +2535,47 @@ void MyWindowHandler(unsigned long windowID, tWindowEventType eType)
 			InstallFrameHandler(MySecondFrameHandler, windowID, nullptr);
 		}
 
+		puzzleSet.resize(4); // 4 puzzles for now // Jul20
+
+		submitTextToBuffer(" submitTextToBuffer : test - witness 3 "); // add the submit text to buffer part ?? //comments
+
+		Witness<4, 4> tmp44w;
+
+		// puzzle 1
+		tmp44w.ClearSeparationConstraints();
+		tmp44w.AddSeparationConstraint(1, 2, Colors::pink);
+		tmp44w.AddSeparationConstraint(2, 2, Colors::yellow);
+
+		puzzleSet[0].push_back(tmp44w);
+
+		// puzzle 2
+		tmp44w.ClearSeparationConstraints();
+		tmp44w.AddSeparationConstraint(0, 3, Colors::green);
+		tmp44w.AddSeparationConstraint(1, 1, Colors::purple);
+		tmp44w.AddSeparationConstraint(1, 2, Colors::purple);
+
+		puzzleSet[1].push_back(tmp44w);
+
+		// puzzle 3
+		tmp44w.ClearSeparationConstraints();
+		tmp44w.AddSeparationConstraint(1, 2, Colors::red);
+		tmp44w.AddSeparationConstraint(2, 2, Colors::black);
+
+		puzzleSet[2].push_back(tmp44w);
+
+
+		// puzzle 4
+		tmp44w.ClearSeparationConstraints();
+		tmp44w.AddSeparationConstraint(1, 2, Colors::pink);
+		tmp44w.AddSeparationConstraint(2, 2, Colors::pink);
+		tmp44w.AddSeparationConstraint(1, 1, Colors::yellow);
+		tmp44w.AddSeparationConstraint(2, 1, Colors::yellow);
+
+		puzzleSet[3].push_back(tmp44w);
+
+
+
+
 		//printf("Window %ld created\n", windowID);
 		//InstallFrameHandler(MyFrameHandler, windowID, 0);
 		//SetNumPorts(windowID, 1);
@@ -2542,19 +2594,34 @@ void MyWindowHandler(unsigned long windowID, tWindowEventType eType)
 
 
 		// board 1 
-		///*
+		/*
 		w.AddSeparationConstraint(2, 1, Colors::pink);
-		w.AddSeparationConstraint(2, 2, Colors::yellow);
+		w.AddSeparationConstraint(2, 2, Colors::purple);
 		w.AddSeparationConstraint(3, 1, Colors::pink);
-		w.AddSeparationConstraint(3, 2, Colors::yellow); 
-		//*/
+		w.AddSeparationConstraint(3, 2, Colors::purple); 
+
+		w.AddSeparationConstraint(2, 3, Colors::pink);
+		w.AddSeparationConstraint(3, 3, Colors::pink); 
+		*/
 
 		// board 2
-		/*
+		///*
 		w.AddSeparationConstraint(2, 1, Colors::pink);
 		w.AddSeparationConstraint(2, 2, Colors::pink);
 		w.AddSeparationConstraint(3, 1, Colors::yellow);
 		w.AddSeparationConstraint(3, 2, Colors::yellow);
+		//*/
+
+		// board 3
+		/*
+		
+		w.AddSeparationConstraint(2, 1, Colors::pink);
+		w.AddSeparationConstraint(2, 2, Colors::purple);
+		w.AddSeparationConstraint(3, 1, Colors::pink);
+		w.AddSeparationConstraint(3, 2, Colors::purple); 
+
+		w.AddSeparationConstraint(2, 3, Colors::pink);
+		w.AddSeparationConstraint(3, 3, Colors::pink); 
 		*/
 
 		//w.AddStarConstraint(1, 1, Colors::pink);
@@ -2640,12 +2707,43 @@ void MyWindowHandler(unsigned long windowID, tWindowEventType eType)
 //comment frame handler
 void MyFrameHandler(unsigned long windowID, unsigned int viewport, void *)
 {
+	
 	if(viewport != 0)
 		return;
+	/*
 	Graphics::Display &d = GetContext(windowID)->display;
 	iws.IncrementTime();
 	w.Draw(d);
 	w.Draw(d, iws);
+	*/
+
+
+	Graphics::Display &display = getCurrentContext()->display;
+	if (whichPuzzle < puzzleNum) // for four puzzles as we go from 0 to 3
+	{
+		if (viewport == 0)
+			iws.IncrementTime();
+		if (redrawBackground)
+		{
+			display.StartBackground();
+			puzzleSet[whichPuzzle][0].Draw(display); // viewport is 0
+			display.EndBackground();
+		}
+		puzzleSet[whichPuzzle][0].Draw(display, iws);
+	}
+	else if (whichPuzzle == puzzleNum){
+		if (redrawBackground)
+		{
+			display.StartBackground();
+			display.FillRect({-1.0f, -1.0f, 1.0f, 1.0f}, Colors::white);
+			display.EndBackground();
+		}
+		display.DrawText("Puzzles Completed!", {0.0f, 0.0f}, Colors::pink, 0.1f, Graphics::textAlignCenter);
+	}
+	if (viewport == 1) // for the table info viewport
+		redrawBackground = false; // comments use this too
+
+
 }
 
 
@@ -2997,45 +3095,39 @@ bool MyClickHandler(unsigned long, int, int, point3d p, tButtonType , tMouseEven
 
 	if (e == kMouseUp)
 	{
-		if (w.Click(p, iws)) // found goal
-		{
-			if (w.GoalTestWithTracking(iws.ws))
+		if (whichPuzzle < puzzleNum){
+
+			if (puzzleSet[whichPuzzle][0].Click(p, iws)) // found goal
 			{
-				LogPathCompliance(w, iws.ws);
-				for (const auto& loc : iws.ws.path) {
-					logFile_pathSol << loc.first << "," << loc.second << "\t"; 
+
+				
+					if (puzzleSet[whichPuzzle][0].GoalTestWithTracking(iws.ws)) // comments // on solved, move to next // we inc cnt, why??
+					{
+						LogPathCompliance(w, iws.ws);
+						for (const auto& loc : iws.ws.path) {
+							logFile_pathSol << loc.first << "," << loc.second << "\t"; 
+						}
+						printf("Solved puzzle- %d!\n", whichPuzzle+1);
+						std::cout << "[Solved]";
+						logFile_rule << " \n\t[Sol] ";
+
+						whichPuzzle++;
+						iws.Reset();
+						redrawBackground = true;
+
+					}
+						
+				else {
+
+					LogPathCompliance(w, iws.ws);
+					logFile_pathAll << "\n\nInv\n";
+					printf("Invalid solution\n");
+					logFile_rule << " \n\t[Inv] ";
+					std::cout << "[Inv]";
+
+					iws.Reset();
 				}
-				printf("Solved!\n");
-				std::cout << "[Sol]";
-				logFile_rule << " \n\t[Sol] ";
 
-				//parse_rules("ra_cpy.txt");
-
-
-				// parse ra.txt here? logfile_ruleAll
-
-				//modelTable.clear();
-				//parseLogFileToModelTable("r.txt", modelTable);
-
-
-
-
-
-				
-			}
-			else {
-				LogPathCompliance(w, iws.ws);
-				logFile_pathAll << "\n\nInv\n";
-				printf("Invalid solution\n");
-				logFile_rule << " \n\t[Inv] ";
-				std::cout << "[Inv]";
-
-
-				//parse_rules("ra_cpy.txt");
-
-
-				
-				//iws.Reset();
 			}
 		}
 	}
@@ -3051,7 +3143,11 @@ bool MyClickHandler(unsigned long, int, int, point3d p, tButtonType , tMouseEven
 
 	if (e == kMouseMove)
 {
-    w.Move(p, iws);
+	//		printf("Move\n");
+	if (whichPuzzle < puzzleNum)
+		puzzleSet[whichPuzzle][0].Move(p, iws); // viewport 0
+		
+    //w.Move(p, iws);
 	//std::cout <<"\n\t"<<iws.fracCycle * 0.04; //shows time incessantly 
 
     if (!iws.ws.path.empty()) {

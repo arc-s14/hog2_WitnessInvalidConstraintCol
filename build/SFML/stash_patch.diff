@@ -1,0 +1,2172 @@
+diff --git a/.vscode/settings.json b/.vscode/settings.json
+index b9189c8d..12e70f4f 100644
+--- a/.vscode/settings.json
++++ b/.vscode/settings.json
+@@ -59,6 +59,17 @@
+         "streambuf": "cpp",
+         "thread": "cpp",
+         "cinttypes": "cpp",
+-        "typeinfo": "cpp"
++        "typeinfo": "cpp",
++        "bit": "cpp",
++        "charconv": "cpp",
++        "codecvt": "cpp",
++        "compare": "cpp",
++        "concepts": "cpp",
++        "format": "cpp",
++        "numbers": "cpp",
++        "semaphore": "cpp",
++        "span": "cpp",
++        "stop_token": "cpp",
++        "variant": "cpp"
+     }
+ }
+\ No newline at end of file
+diff --git a/apps/witness/Driver.cpp b/apps/witness/Driver.cpp
+index 8233e489..fc1795cc 100644
+--- a/apps/witness/Driver.cpp
++++ b/apps/witness/Driver.cpp
+@@ -1,3 +1,6 @@
++//Driver.cpp works Jul 07
++
++
+ /*
+  *  $Id: sample.cpp
+  *  hog2
+@@ -23,25 +26,270 @@
+ std::mutex lock;
+ 
+ 
+-
+-
+-
+ //comment
+ 
+-//arcirules start
++//irrules start
+ 
+-//#include "WitnessInferenceRule.h" 
+-//#include "/home/arc/hog2/papers/TheWitnessEditor/include/WitnessInferenceRule.h" //don't use local path //comment
+-//#include "/home/arc/hog2/envutil/PuzzleInferenceRule.h"
++// for the following two to work I edited the Makefile // DO NOT add these to pull req  
+ #include "WitnessInferenceRule.h" //don't use local path //comment
+ #include "PuzzleInferenceRule.h"
+ 
+ #include "sstream"
++#include "set"
++#include <map>
+ 
+ 
+ 
+ //
+ 
++//May 2025
++
++enum class StepType { FOLLOW, DEVIATE, NORMAL };
++
++struct StepInfo {
++    int action;       // 0 = Up, 1 = Down, etc.
++    int ruleID;       // -1 if no rule applied
++    StepType type;    // What kind of step this was
++};
++std::vector<StepInfo> pathLog;
++
++
++
++//July 2025
++int prev_dir = -9;
++int new_dir = -9;
++
++std::vector<std::string> ruleBuffer; //rules showing up in completed paths, valid or invalid
++
++
++// for player modelling updates // helper table
++struct RuleEntry {
++    int x, y;
++    int ruleID;
++    int activeDirsCount;
++    std::map<int, float> dirProbs; // 0=Up, 1=Down, L, R, inactive = -1
++    int dirTaken = -1;
++    int nextX = -1, nextY = -1;
++};
++
++std::vector<RuleEntry> modelTable; // do not use 'ruleTable'
++
++const int NUM_R = 6;     // rules 
++const int NUM_S = 2;     // stats aka prior, posteri, activeDirs, ... Follow, Deviate, ..
++
++//std::vector<std::vector<int>> model_T(NUM_R, std::vector<int>(NUM_S, 0));
++
++std::vector<std::vector<float>> model_T(NUM_R, std::vector<float>(NUM_S, -1.0f));
++
++
++
++void Del_Fill_model_T(std::vector<std::vector<int>> &table) {
++    for (int r = 0; r < table.size(); ++r) {
++        for (int c = 0; c < table[r].size(); ++c) {
++            table[r][c] = 1;
++        }
++    }
++}
++
++
++
++
++std::vector<RuleEntry> tempBatch;
++
++int dirStrToInt(const std::string& dir) {
++    if (dir == "Up") return 0;
++    if (dir == "Down") return 1;
++    if (dir == "Left") return 2;
++    if (dir == "Right") return 3;
++    if (dir == "Start") return 4;
++    if (dir == "End") return 5;
++    return -1;
++}
++
++void flushBatch() {
++    modelTable.insert(modelTable.end(), tempBatch.begin(), tempBatch.end());
++    tempBatch.clear();
++}
++
++void parseLogFile(const std::string& filename) {
++    std::ifstream infile(filename);
++    std::string line;
++
++    std::regex ruleLineRegex(R"(\[([0-9\-]+),\s*([0-9\-]+)\]\[Rule\]\s*(\d+):\s*(.*))");
++
++    while (std::getline(infile, line)) {
++        if (line.find("[Inv]") != std::string::npos || line.find("[Sol]") != std::string::npos) {
++            flushBatch();
++            continue;
++        }
++
++        std::smatch match;
++        if (std::regex_search(line, match, ruleLineRegex)) {
++            RuleEntry entry;
++            entry.x = std::stoi(match[1]);
++            entry.y = std::stoi(match[2]);
++            entry.ruleID = std::stoi(match[3]);
++
++            std::string rest = match[4];
++            std::istringstream ss(rest);
++            std::string token;
++            while (ss >> token) {
++                size_t eqPos = token.find('=');
++                if (eqPos != std::string::npos) {
++                    std::string dir = token.substr(0, eqPos);
++                    float prob = std::stof(token.substr(eqPos + 1));
++                    int dirIndex = dirStrToInt(dir);
++                    if (dirIndex != -1) {
++                        entry.dirProbs[dirIndex] = prob;
++                    }
++                }
++            }
++            entry.activeDirsCount = entry.dirProbs.size();
++            tempBatch.push_back(entry);
++        }
++    }
++
++    // final flush if needed
++    flushBatch();
++}
++
++
++
++
++
++
++#include <iostream>
++#include <fstream>
++#include <sstream>
++#include <regex>
++#include <vector>
++#include <string>
++#include <map>
++#include <iomanip>
++
++#include <iostream>
++#include <fstream>
++#include <sstream>
++#include <string>
++
++
++
++
++
++float bayesianUpdate(float prior, float likelihood, int numDirs) {
++    float denom = (likelihood * prior) + ((1.0f / numDirs) * (1 - prior));
++    return denom > 0 ? (likelihood * prior) / denom : 0;
++}
++
++
++
++// safely del
++// remove leading/trailing whitespace
++std::string trim(const std::string& str) {
++    size_t first = str.find_first_not_of(" \t");
++    size_t last = str.find_last_not_of(" \t");
++    return (first == std::string::npos || last == std::string::npos) ? "" : str.substr(first, last - first + 1);
++}
++
++
++// safely delete
++// this is just for me to check 
++// doesn't consider the next move for computing probabs - just wanted to test first - considers the current direction
++void parse_rules(const std::string& logFilePath, const std::string& outFilePath = "model_res.txt", float prior = 0.2f) {
++    //std::cout << "[INFO] Parsing started...\n";
++    std::ifstream infile(logFilePath);
++    std::ofstream outfile(outFilePath);
++
++    if (!infile || !outfile) {
++        //std::cerr << "[ERROR] Failed to open files.\n";
++        return;
++    }
++
++    std::string line;
++    std::string lastDir = "";
++    std::pair<int, int> lastPos = {-1, -1};
++    std::pair<int, int> currPos;
++
++    while (std::getline(infile, line)) {
++        // Trim line
++        line.erase(0, line.find_first_not_of(" \t"));
++        line.erase(line.find_last_not_of(" \t") + 1);
++
++        // Movement line
++        if (line.find("] Rt") != std::string::npos ||
++            line.find("] Lt") != std::string::npos ||
++            line.find("] Up") != std::string::npos ||
++            line.find("] Dn") != std::string::npos) {
++            
++            std::istringstream ss(line);
++            char dummy;
++            int x, y;
++            std::string dir;
++            ss >> dummy >> x >> dummy >> y >> dummy >> dir;
++
++            lastPos = currPos;
++            currPos = {x, y};
++            lastDir = dir;
++
++            outfile << "[Move] " << line << "\n";
++        }
++
++        // Rule line
++        else if (line.find("[Rule]") != std::string::npos) {
++            size_t ruleStart = line.find("[Rule]");
++            size_t colonPos = line.find(':', ruleStart);
++            if (ruleStart == std::string::npos || colonPos == std::string::npos) continue;
++
++            int ruleID = std::stoi(line.substr(ruleStart + 7, colonPos - ruleStart - 7));
++            std::istringstream ss(line.substr(colonPos + 1));
++            std::string token;
++            std::map<std::string, float> dirMap;
++
++            while (ss >> token) {
++                size_t eq = token.find('=');
++                if (eq != std::string::npos) {
++                    std::string dir = token.substr(0, eq);
++                    float val = std::stof(token.substr(eq + 1));
++                    dirMap[dir] = val;
++                }
++            }
++
++            if (!lastDir.empty()) {
++                std::string shortDir = lastDir.substr(0, 2); // e.g., Rt
++                float likelihood = dirMap.count(shortDir) ? dirMap[shortDir] : 0.0f;
++                int numDirs = dirMap.size();
++
++                float posterior = (likelihood * prior) / (likelihood * prior + ((1.0f / numDirs) * (1 - prior)));
++
++                outfile << "[Bayes] Rule " << ruleID
++                        << " | Pos: [" << currPos.first << ", " << currPos.second << "]"
++                        << " | Dir: " << shortDir
++                        << " | Likelihood: " << likelihood
++                        << " | Prior: " << prior
++                        << " | Posterior: " << std::fixed << std::setprecision(3) << posterior << "\n";
++            }
++        }
++    }
++
++    outfile << "[End of parsing]\n";
++    //std::cout << "[INFO] Results written to " << outFilePath << "\n";
++}
++
++
++
++
++
++
++
++
++
++
++
++
++//May 2025
++
++
++
+ //mid- global
+ 
+ // Constants for the number of rules and actions
+@@ -76,6 +324,23 @@ int mustTakeSkipCounter = 0;
+ //file stream to keep it open during execution
+ std::ofstream logFile("mouse.txt", std::ios::trunc); // Open in trunc mode to clear file
+ std::ofstream logFile_two("path_taken.txt", std::ios::trunc); // all visited nodes //this logs all the stuff multiple times dummy, plus you have this process elsewhere already
++std::ofstream logFile_three("time_m.txt", std::ios::trunc);
++std::ofstream logFile_pathAll("pathAll.txt", std::ios::trunc);
++std::ofstream logFile_pathSol("pathSolved.txt", std::ios::trunc);
++
++std::ofstream logFile_rule("r.txt", std::ios::trunc);
++std::ofstream logFile_ruleAll("ra.txt", std::ios::trunc); // to track all nodes too // basically the outstream
++
++
++//std::map<std::pair<int, int>, std::string> lastPrintedRuleData;
++std::ofstream globalLogFile;
++
++void InitLogFile(const std::string& data) {
++	globalLogFile.open("rulesss.txt", std::ios::app); // reset file
++	globalLogFile << data;
++	globalLogFile.close();
++}
++
+ 
+ 
+ 
+@@ -150,98 +415,35 @@ float r6_learn = 0.10;
+ int switch_rules = 5;
+ 
+ 
+-void PrintLearningTable(std::vector<std::vector<float>>& table, //removed const - uhh check again later?? [fix]
+-                Graphics::Display &d, 
+-                const Graphics::point& startPoint, 
+-                double fontSize, 
+-                double cellWidth, 
+-                double cellHeight,
+-                double timer,
+-                int T_row,
+-                int T_col) 
+-{
+-    double x = startPoint.x;
+-    double y = startPoint.y;
+-
+-    // Column headers for learning, transition, guess, and slip
+-    const std::vector<std::string> colHeaders = {"L", "T", "G", "S"};
+-
+-    // Ensure table has exactly 6 rows and 4 columns
+-    if (table.size() != 6 || table[0].size() != 4) {
+-        std::cerr << "err: table not 6x4." << std::endl;
+-        return;
+-    }
+-
+-
+-	if (switch_rules == 5) {  
+-        for (int row = 0; row < table.size(); row++) {
+-            for (int col = 0; col < table[0].size(); col++) {  // ✅ Include `col` in loop
+-                if (col == 0) {  // Only update the first column (Learning values)
+-                    if (row == 0)
+-                        table[row][col] = r1_learn;
+-                    else if (row == 1)
+-                        table[row][col] = r2_learn;
+-
+-                    else if (row == 3)
+-                        table[row][col] = r4_learn;
+-                    else if (row == 4)
+-                        table[row][col] = r5_learn;
+-                    else if (row == 5)
+-                        table[row][col] = r6_learn;
+-                }
+-            }
+-        }
+-        switch_rules = 10;  // ✅ Prevent future updates
+-    }
+ 
+ 
+-    // Rows represent different rules, printing from bottom to top
+-    for (int row = table.size() - 1; row >= 0; --row) {
+-        double cellY = y - ((table.size() - row) * cellHeight); // Reverse row order
++#include <vector>
++#include <string>
+ 
+-        for (int col = -1; col < static_cast<int>(table[0].size()); ++col) {
+-            double cellX = x + (col + 0.5) * cellWidth; // Offset for row headers
+ 
+-            if (col == -1) {
+-                // not printing rule names (row headers)
+-                // d.DrawText(GetRuleNameByID(row).c_str(), {x, cellY}, Colors::darkgreen, fontSize, 0);
+-            } 
+-            else {
+-                float value = table[row][col];
+-				
+-				std::ostringstream stream_rules;
+-				stream_rules.precision(1);
+-				stream_rules << std::fixed << value;
+ 
+-				d.DrawText((stream_rules.str()).c_str(), {cellX, cellY}, Colors::darkblue, fontSize*0.5, 0);
+-				//continue;
+ 
+-				//doing some cals
+-				/*
+ 
+-					LearningTable[0][0] = (prev_L + (1 - prev_L) * p_T) * 100.0f; //prev_L is learningTable[0][0]
+-					p_T = corr attempts / total occurences
+-
+-				
+-				*/
+-				
+-                //d.DrawText(std::to_string(value).c_str(), {cellX, cellY}, Colors::blue, fontSize, 0);
+-            }
+-        }
+-    }
+ 
+-    // Print column headers (LAST, so they appear on top)
+-    double headerY = y - ((table.size() + 1) * cellHeight); // Slightly above the first row
+-    for (int col = 0; col < static_cast<int>(table[0].size()); ++col) {
+-        double cellX = x + (col + 0.5) * cellWidth;
+-        d.DrawText(colHeaders[col].c_str(), {cellX, headerY}, Colors::darkgreen, fontSize, 0);
++#include <iostream>
++#include <vector>
++#include <string>
++#include <bitset>
++#include <iomanip>
++
++// Helper: map direction code to label
++std::string DirName(int code) {
++    switch (code) {
++        case 0: return "L";
++        case 1: return "R";
++        case 2: return "U";
++        case 3: return "D";
++        default: return "?";
+     }
+-
+-
+ }
+ 
+ 
+-
++// Use this to draw the model - player model 
+ void PrintRuleTable(const std::vector<std::vector<int>>& table, //[NOW using] not using this table - using RuleTable instead
+                 Graphics::Display &d, 
+                 const Graphics::point& startPoint, 
+@@ -252,6 +454,8 @@ void PrintRuleTable(const std::vector<std::vector<int>>& table, //[NOW using] no
+ 				int T_row,
+ 				int T_col) 
+ {
++
++	/*
+     //start coor
+     double x = startPoint.x;
+     double y = startPoint.y;
+@@ -283,8 +487,8 @@ void PrintRuleTable(const std::vector<std::vector<int>>& table, //[NOW using] no
+ 				//LearningTable[row][0] = 5; //why is this not working??
+ 
+ 			}
+-			/*
+ 			
++			//COMMENT OUT THIS BLOCK
+ 
+ 			if (LearningTable[row][1] != 0.0f) {  // Only update if transition probability is nonzero
+ 				float p_T = LearningTable[row][1];  // Transition probability
+@@ -295,7 +499,7 @@ void PrintRuleTable(const std::vector<std::vector<int>>& table, //[NOW using] no
+ 				std::cout << "update LearningTable[" << row << "][0]: " << LearningTable[row][0] << std::endl;
+ 			}
+ 			
+-			*/
++			// COMMENT OUT THIS BLOCK
+ 
+ 
+ 
+@@ -315,7 +519,7 @@ void PrintRuleTable(const std::vector<std::vector<int>>& table, //[NOW using] no
+ 
+     //show col headers AFTER all the rows
+     double headerY = y - ((RuleTable.size() + 1) * cellHeight); //slightly above the first row
+-    const std::vector<std::string> colHeaders = {"Pos", "Neg", "Occur", "Perc"};
++    const std::vector<std::string> colHeaders = {"Fol.", "Dev.", "Occur", "Perc", "Guess"};
+ 
+     for (int col = 0; col < static_cast<int>(RuleTable[0].size()); ++col) {
+         double cellX = x + (col + 1) * cellWidth; 
+@@ -325,9 +529,13 @@ void PrintRuleTable(const std::vector<std::vector<int>>& table, //[NOW using] no
+ 
+ 
+ 	double learningTableX = x + (RuleTable[0].size() + 1) * cellWidth;
+-	PrintLearningTable(LearningTable, d, {learningTableX, y}, fontSize, cellWidth, cellHeight, timer, 5, 3);
++	//PrintLearningTable(LearningTable, d, {learningTableX, y}, fontSize, cellWidth, cellHeight, timer, 5, 3);
++
++*/
++ //std::cout << "\n\nN/A"; //filler line anyway, it's been a while since I touched this code yikes
+ 
+ 
++	// d.DrawLine({-0.75,0}, {-0.75,0.15}, 0.01, Colors::black);
+ 
+ }
+ 
+@@ -337,6 +545,200 @@ void PrintRuleTable(const std::vector<std::vector<int>>& table, //[NOW using] no
+ //std::vector <int> APcolumns (4, -1); //4 cols, UDLR (ignoring start and end)
+ static std::vector <int> APcolumns_main = {0, 1, 2, 3}; //no ini
+ 
++
++//remove Timer, T_row and T_col
++
++
++// Use this to draw the model - player model 
++
++
++void PrintTable_2(const std::vector<std::vector<float>>& table,
++                  Graphics::Display &d,
++                  const Graphics::point& startPoint,
++                  double fontSize,
++                  double cellWidth,
++                  double cellHeight) 
++{
++    double x = startPoint.x;
++    double y = startPoint.y;
++
++	
++
++    x = -0.75;
++    y = 0.75;
++
++	std::string st_msg = "[WIP] Ignore table. Should show the player model.";
++
++	d.DrawText(st_msg.c_str(), 
++                           {static_cast<float>(x), static_cast<float>(y)}, 
++                           Colors::darkred, fontSize, 0);
++
++    // Draw rows (rules)
++    for (int row = table.size() - 1; row >= 0; --row) {
++        double cellY = y - ((table.size() - row) * cellHeight);
++
++        for (int col = -1; col < static_cast<int>(table[0].size()); ++col) {
++            double cellX = x + (col + 1) * cellWidth;
++
++            if (col == -1) {
++                // Rule name (row header)
++                d.DrawText(GetRuleNameByID(row).c_str(), 
++                           {static_cast<float>(x), static_cast<float>(cellY)}, 
++                           Colors::orange, fontSize, 0);
++            } else {
++                std::ostringstream oss;
++                oss << std::fixed << std::setprecision(2) << table[row][col];
++                std::string valueStr = oss.str();
++
++                d.DrawText(valueStr.c_str(), 
++                           {static_cast<float>(cellX), static_cast<float>(cellY)}, 
++                           Colors::black, fontSize, 0);
++            }
++        }
++    }
++
++    // Draw column headers
++    double headerY = y - ((table.size() + 1) * cellHeight);
++    //const std::vector<std::string> colHeaders = {"Pri", "Pos", "Dir", "Up_", "Dwn", "Lft", "Rgt"};
++    const std::vector<std::string> colHeaders = {"Prior", "Posterior"};
++
++    for (int col = 0; col < static_cast<int>(table[0].size()); ++col) {
++        double cellX = x + (col + 1) * cellWidth;
++
++        d.DrawText(colHeaders[col].c_str(), 
++                   {static_cast<float>(cellX), static_cast<float>(headerY)}, 
++                   Colors::orange, fontSize, 0);
++    }
++}
++
++
++
++void PrintTable_2_old(const std::vector<std::vector<float>>& table,
++                  Graphics::Display &d,
++                  const Graphics::point& startPoint,
++                  double fontSize,
++                  double cellWidth,
++                  double cellHeight) 
++{
++
++	// d.DrawLine({-0.75,0}, {-0.75,0.15}, 0.01, Colors::black);
++    double x = startPoint.x;
++    double y = startPoint.y;
++
++    x = -0.75;
++    y = 0.75;
++
++    // Draw rows (rules)
++    for (int row = table.size() - 1; row >= 0; --row) {
++
++		
++        double cellY = y - ((table.size() - row) * cellHeight);
++
++        for (int col = -1; col < static_cast<int>(table[0].size()); ++col) {
++            double cellX = x + (col + 1) * cellWidth;
++
++            if (col == -1) {
++                // Rule name (row header)
++                d.DrawText(GetRuleNameByID(row).c_str(), {static_cast<float>(x), static_cast<float>(cellY)}, Colors::orange, fontSize, 0);
++            } else {
++                std::string valueStr;
++                if (col == 3 || col == 4) {
++                    // Format percentage & guess columns as decimals (e.g., 47.0%)
++                    float value = table[row][col] / 100.0f;
++                    std::ostringstream oss;
++                    oss << std::fixed << std::setprecision(2) << value;
++                    valueStr = oss.str();
++                } else {
++                    valueStr = std::to_string(table[row][col]);
++                }
++                d.DrawText(valueStr.c_str(), { static_cast<float>(cellX), static_cast<float>(cellY)}, Colors::black, fontSize, 0);
++            }
++        }
++			
++    }
++
++    // Column headers
++    double headerY = y - ((table.size() + 1) * cellHeight);
++    const std::vector<std::string> colHeaders = {"Pri", "Pos", "Dir", "Up_", "Dwn", "Lft", "Rgt"};
++
++	
++    for (int col = 0; col < static_cast<int>(table[0].size()); ++col) {
++        double cellX = x + (col + 1) * cellWidth;
++        d.DrawText(colHeaders[col].c_str(), {static_cast<float>(cellX), static_cast<float>(headerY)}, Colors::orange, fontSize, 0);
++    }
++		
++
++}
++
++
++// from here for Julyx
++
++
++// dec first
++
++void PrintModelTable(const std::vector<RuleEntry>& modelTable,
++                     Graphics::Display &d,
++                     const Graphics::point& startPoint,
++                     double fontSize,
++                     double cellWidth,
++                     double cellHeight);
++
++#include <fstream>
++#include <sstream>
++#include <regex>
++
++void parseLogFileToModelTable(const std::string& filename, std::vector<RuleEntry>& modelTable) {
++    std::ifstream infile(filename);
++    std::string line;
++    std::regex ruleRegex(R"(\[(\d+), (\d+)\]\[Rule\] (\d+): (.+))");
++
++    while (std::getline(infile, line)) {
++        std::smatch match;
++        if (std::regex_match(line, match, ruleRegex)) {
++            RuleEntry entry;
++            entry.x = std::stoi(match[1]);
++            entry.y = std::stoi(match[2]);
++            entry.ruleID = std::stoi(match[3]);
++
++            // Parse direction=probability
++            std::istringstream dirStream(match[4]);
++            std::string token;
++            entry.activeDirsCount = 0;
++
++            while (dirStream >> token) {
++                size_t eq = token.find('=');
++                if (eq == std::string::npos) continue;
++
++                std::string dirStr = token.substr(0, eq);
++                float prob = std::stof(token.substr(eq + 1));
++
++                int dir = -1;
++                if (dirStr == "Up") dir = 0;
++                else if (dirStr == "Down") dir = 1;
++                else if (dirStr == "Left") dir = 2;
++                else if (dirStr == "Right") dir = 3;
++                else if (dirStr == "Start") dir = 4;
++                else if (dirStr == "End") dir = 5;
++
++                if (dir != -1) {
++                    entry.dirProbs[dir] = prob;
++                    entry.activeDirsCount++;
++                }
++            }
++
++            modelTable.push_back(entry);
++        }
++
++        // Reset if [Sol] or [Inv] seen (optional)
++        if (line.find("[Sol]") != std::string::npos || line.find("[Inv]") != std::string::npos) {
++            modelTable.clear(); // comment this out if you want to keep all entries
++        }
++    }
++}
++
++
++
++
+ void PrintTable(const std::vector<std::vector<std::string>>& table, 
+                 Graphics::Display &d, 
+                 const Graphics::point& startPoint, 
+@@ -345,90 +747,449 @@ void PrintTable(const std::vector<std::vector<std::string>>& table,
+                 double cellHeight,
+ 				double timer,
+ 				int T_row,
+-				int T_col) 
++				int T_col,
++				const std::vector<int>& possibleDirs,
++			int cX, int cY) 
+ {
+     //start here
+ 	double x = startPoint.x;
+ 	double y = startPoint.y;
+ 
++	
++
++
++
+ 	//col headers (printed LAST)
+ 	const std::vector<std::string> colHeaders = {"Up", "Down", "Left", "Right", "Start", "End"};
+ 
++
++	std::vector<int> activeRows; // for the probalility table
++
++
+ 	//rows from bottom to top
+ 	for (int row = table.size() - 1; row >= 0; --row) { 
+ 		double cellY = y - ((table.size() - row) * cellHeight); //rev row order
+ 
+-		for (int col = -1; col < static_cast<int>(table[0].size()); ++col) { 
+-			double cellX = x + (col + 1) * cellWidth; //odfset for row headers
++		for (int col = -1; col < static_cast<int>(table[0].size()); ++col) { 
++			double cellX = x + (col + 1) * cellWidth; //odfset for row headers
++
++
++			if (col == -1) {
++				//rules
++				d.DrawText(GetRuleNameByID(row).c_str(), {static_cast<float>(x), static_cast<float>(cellY)}, Colors::blue, fontSize, 0);
++			} 
++			else {
++
++				float shift_icons = fontSize / 8;
++				//vals
++				if ( (table[row][col]) == "M" )
++				{
++					//void Graphics::Display::FillCircle(Graphics::rect r, rgbColor c)
++					//d.FillCircle({static_cast<float>(cellX+shift_icons+shift_icons), static_cast<float>(cellY-shift_icons)}, fontSize/1.5, Colors::darkgreen); //shift neg cus that's how the grid works
++
++					d.FillCircle({static_cast<float>(cellX+shift_icons+shift_icons), static_cast<float>(cellY-shift_icons)}, fontSize/1.5, Colors::green); //shift neg cus that's how the grid works
++
++
++					if (std::find(activeRows.begin(), activeRows.end(), row) == activeRows.end()) {
++						activeRows.push_back(row);
++					}
++
++				}
++
++				else if(table[row][col]=="S") //should_take
++				{
++					//this isn't quite "standard" for the ATP rule gives us cant_take but every other non_c_t direction might not be possible or valid
++					//so let's keep the shoudl take stuff away for along the path for now
++					//d.FillSquare({cellX+shift_icons+shift_icons, cellY-shift_icons}, fontSize/1.5, Colors::bluegreen);
++
++				}
++				else if ( (table[row][col]) == "C" )
++				{
++					//for when we have AP - rule 5
++					if(row == 4)
++					{
++						//std::cout<< "\t\tadded AP col: "<<col; //see if we're adding the right cols 
++						//APcolumns.emplace_back(col);
++						//d.FillSquare({static_cast<float>(cellX+shift_icons+shift_icons), static_cast<float>(cellY-shift_icons)}, fontSize/1.5, Colors::orange);
++						d.FillSquare({static_cast<float>(cellX+shift_icons+shift_icons), static_cast<float>(cellY-shift_icons)}, fontSize/1.5, Colors::red);
++
++						if (std::find(activeRows.begin(), activeRows.end(), row) == activeRows.end()) {
++							activeRows.push_back(row);
++						}
++					}
++
++					//normal case
++					else
++					{
++						//d.FillSquare({static_cast<float>(cellX+shift_icons+shift_icons), static_cast<float>(cellY-shift_icons)}, fontSize/1.5, Colors::red);
++						d.FillSquare({static_cast<float>(cellX+shift_icons+shift_icons), static_cast<float>(cellY-shift_icons)}, fontSize/1.5, Colors::red);
++						//d.DrawText((table[row][col]).c_str(), {cellX, cellY}, Colors::red, fontSize, 0); //only show red C
++
++						if (std::find(activeRows.begin(), activeRows.end(), row) == activeRows.end()) {
++							activeRows.push_back(row);
++						}
++					}
++				}
++				else 
++				{
++					d.DrawText((table[row][col]).c_str(), {static_cast<float>(cellX+shift_icons), static_cast<float>(cellY)}, Colors::black, fontSize, 0);
++					//d.FillNGon({cellX+shift_icons+shift_icons, cellY-shift_icons}, fontSize/1.1, 6, 0, Colors::gray); //to see how to "centre" icons
++					
++
++				}
++					
++			}
++		}
++
++
++
++
++		}
++
++		//print col headers (LAST, so they appear on top)
++		double headerY = y - ((table.size() + 1) * cellHeight); //slightly above the first row
++		for (int col = 0; col < static_cast<int>(table[0].size()); ++col) {
++			double cellX = x + (col + 1) * cellWidth; //offset row headers
++			d.DrawText(colHeaders[col].c_str(), {static_cast<float>(cellX), static_cast<float>(headerY)}, Colors::blue, fontSize, 0);
++		}
++
++
++		//we place RuleTable below the MoveTable
++		double ruleTableX = x; // Align with MoveTable
++		double ruleTableY = y - (MoveTable.size() + 1) * cellHeight; // space below MoveTable
++
++		//PrintRuleTable(RuleTable, disp, -0.75, 0.05f, 0.2f, 0.1f, 7, RULE_ROW, RULE_COL);
++		PrintRuleTable(RuleTable, d, {static_cast<float>(ruleTableX), static_cast<float>(-ruleTableY)}, fontSize, cellWidth, cellHeight, timer, T_row, T_col);
++
++
++
++	//std::cout << "\n ---------- [Assume we only know one rule at a time\n The combinations are just intersections of available directions common to the active known rules \nActive Rule probabilities at curr node:\n";
++
++	const char* dirNames[] = {"Up", "Down", "Left", "Right", "Start", "End"}; // add dirs start and end otherwise the output looks odd at s/e
++
++
++    std::vector<double> minProbs(possibleDirs.size(), 1.0); // initialize to 1.0 (max)
++
++
++	static std::set<std::string> printed_rule_lines; // remember what I've already printed
++
++	//static std::map<std::string, std::string> latest_rule_lines;
++
++
++	
++
++
++	// reset 
++	static int lastCX = -1, lastCY = -1;
++	if (cX != lastCX || cY != lastCY) {
++		printed_rule_lines.clear();
++		lastCX = cX;
++		lastCY = cY;
++	}
++
++
++
++	// Loop over active rows (rules)
++	for (int activeRow : activeRows) 
++	{
++
++		std::ostringstream ruleOut; //ruleOutput //for printing NEW lines/ different rules/ new node exxentially
++
++		std::string ruleKey = "[Rule] " + std::to_string(activeRow + 1);  // we adjust to match [Rule] 5 format
++
++
++		std::vector<double> probs(possibleDirs.size(), 0.0); // probabs from here
++
++		double sum = 0.0;
++		int counter = possibleDirs.size();
++		int initial_counter = counter;
++		int cant_counter = 0;
++
++		// first we assign base probs to non-"M" dirs, only for active dirs
++		for (size_t i = 0; i < possibleDirs.size(); ++i) {
++			int dir = possibleDirs[i];
++			if (table[activeRow][dir] != "M") {
++				probs[i] = 0.06; // need to add to dynamic table - not model table // just checking
++
++				//model_T[activeRow][4 + dir] = probs[i];
++
++				sum += 0.06;
++				counter -= 1;
++
++				if (table[activeRow][dir] == "C")
++				{
++					cant_counter += 1;
++				}
++
++
++				if (probs[i] < minProbs[i]) {
++					minProbs[i] = probs[i];
++				}
++
++			}
++		}
++		int counter_M = 0;
++		// if applicable - then fill remaining "M" dirs with equal share of leftover probab using counter
++		if (counter > 0) {
++			double fill_val = (1.0 - sum) / counter;
++			for (size_t i = 0; i < possibleDirs.size(); ++i) {
++				int dir = possibleDirs[i];
++				if (table[activeRow][dir] == "M") {
++					probs[i] = fill_val;
++
++
++					//model_T[activeRow][4 + dir] = probs[i];
++					counter_M += 1;
++
++
++					if (probs[i] < minProbs[i]) {
++						minProbs[i] = probs[i];
++					}
++				}
++			}
++		}
++
++		
++		// WHY ELSE IF - remove later I dont wanna break this
++		// there is no "M" and we only have "C"
++		if (cant_counter > 0 && counter_M == 0) {
++			int new_sum = cant_counter * 0.06;
++			//ruleOut << "\t\n [sum, ini, cant]"<< new_sum << "\t" << initial_counter << "\t" << cant_counter << "\t [e]\n"; //rules show here
++			double fill_val = (1.0 - cant_counter * 0.06) / (initial_counter - cant_counter);
++			for (size_t i = 0; i < possibleDirs.size(); ++i) {
++				int dir = possibleDirs[i];
++				if (table[activeRow][dir] != "C") {
++					probs[i] = fill_val;
++
++
++					//model_T[activeRow][4 + dir] = probs[i];
++
++					
++
++
++					if (probs[i] < minProbs[i]) {
++						minProbs[i] = probs[i];
++					}
++				}
++			}
++		}
++
++		// no direction is valid
++		/*
++		if (cant_counter == initial_counter)
++		{
++			ruleOut << "\t\t --- all invalid\n\n"; //rules show here
++			for (size_t i = 0; i < possibleDirs.size(); ++i) {
++				int dir = possibleDirs[i];
++				probs[i] = 0.06; //should be 0.06
++				
++			}
++		}
++		*/
++
++		bool allWeak = true;
++		for (size_t i = 0; i < minProbs.size(); ++i) {
++			if (minProbs[i] > 0.06 + 1e-6) { // some stronger direction exists
++				allWeak = false;
++				break;
++			}
++		}
++
++		//if (allWeak) {
++		//	ruleOut << "  [all directions invalid]";
++		//}
++
++
++
++		
++
++		//Julyx
++
++		//Julyworks
++
++		/*
++		float r_prior = 0.2;
++		float r_poste = -1;
++		int r_dir = counter; // or possibleDirs.size
++		float r_up = -1;
++		float r_dn = -1;
++		float r_lt = -1;
++		float r_rt = -1;
++
++		int rule_ID = activeRow;
++
++		// Only update if this row has not been filled
++		
++		if (model_T[rule_ID][0] == -2) {
++			model_T[rule_ID][0] = r_prior;
++			model_T[rule_ID][1] = r_poste;
++			model_T[rule_ID][2] = r_dir;
++
++
++			for (size_t i = 0; i < possibleDirs.size(); ++i) {
++				int dir = possibleDirs[i];  // dir is expected to be 0=Up, 1=Dn, 2=Lt, 3=Rt
++
++				switch (dir) {
++					case 0: r_up = probs[i]; break;
++					case 1: r_dn = probs[i]; break;
++					case 2: r_lt = probs[i]; break;
++					case 3: r_rt = probs[i]; break;
++					default: break;  // ignore start/end/etc.
++				}
++			}
++
++
++
++		}
++		*/
++
++
++		//const char* dirNames[] = {"Up", "Down", "Left", "Right"};
++
++		
++
++		ruleOut << "\n\t[" << cX << ", "<<cY<<"]"; // removed odd space // fix parser as it worked with said odd space
++		//ruleOut << "\n\t [" << cX << ", "<<cY<<"]";
++		ruleOut << "[Rule] " << activeRow+1 << ": ";
++
++		for (size_t i = 0; i < possibleDirs.size(); ++i) {
++			int dirIdx = possibleDirs[i];
++
++			// protect against invalid dir index
++			if (dirIdx >= 0 && dirIdx < 6) {
++				//std::cout <<"\ttest\t";
++				ruleOut << dirNames[dirIdx] << "=" << std::fixed << std::setprecision(3) << probs[i] << "  ";
++
++				//model_T[activeRow][dirIdx + 4] = probs[i];
++
++			} else {
++				ruleOut << "[?Dir" << dirIdx << "]=" << std::fixed << std::setprecision(3) << probs[i] << "  ";
++
++				//model_T[activeRow][dirIdx + 4] = probs[i];
++			}
++		}
++
++		// append this *after* rule info so it stays on the same line
++		if (allWeak) {
++			//ruleOut << "[all dirs invalid]"; //wrong
++		}
++
++		ruleOut << "\n";
++
++
++
++		/*
++		if (mySet.find(x) == mySet.end()) {
++			// x is not in the set
++		} // aka end() points past the last ele of the container/ set
++		*/
++
++
++		// remove this block
++		int tog_x = -9;
++		// only print if it's new
++		std::string ruleLine = ruleOut.str();
++		if (printed_rule_lines.find(ruleLine) == printed_rule_lines.end()) {
++			std::cout << ruleLine;
++
++			//log__F
++			logFile_ruleAll << ruleLine;
++			printed_rule_lines.insert(ruleLine); // remember it ig
++
++			logFile_rule << ruleLine;
++			tog_x = 2;
++		}
++
++
++		
++
++		RuleEntry entry;
++		entry.x = x;
++		entry.y = y;
++		entry.ruleID = activeRow;
++		entry.activeDirsCount = 0;
++
++		for (int dir = 0; dir < possibleDirs.size(); dir++) {
++			if (possibleDirs[dir]) { // you should already know which directions are active
++				float prob = probs[dir]; // or however you're storing the per-direction probability
++				entry.dirProbs[dir] = prob;
++				entry.activeDirsCount++;
++			}
++		}
++
++		//entry.dirTaken = dirNames[dirIdx];     // if known
++		entry.nextX = cX;           // if known
++		entry.nextY = cY;           // if known
++
++		modelTable.push_back(entry);
++
++
++
+ 
++	}
++	
+ 
+-			if (col == -1) {
+-				//rules
+-				d.DrawText(GetRuleNameByID(row).c_str(), {x, cellY}, Colors::blue, fontSize, 0);
+-			} 
+-			else {
++}
+ 
+-				float shift_icons = fontSize / 8;
+-				//vals
+-				if ( (table[row][col]) == "M" )
+-				{
+-					//void Graphics::Display::FillCircle(Graphics::rect r, rgbColor c)
+-					d.FillCircle({cellX+shift_icons+shift_icons, cellY-shift_icons}, fontSize/1.5, Colors::darkgreen); //shift neg cus that's how the grid works
+ 
+-				}
++//up to here Julyx
+ 
+-				else if(table[row][col]=="S") //should_take
+-				{
+-					d.FillSquare({cellX+shift_icons+shift_icons, cellY-shift_icons}, fontSize/1.5, Colors::bluegreen);
+ 
+-				}
+-				else if ( (table[row][col]) == "C" )
+-				{
+-					//for when we have AP - rule 5
+-					if(row == 4)
+-					{
+-						//std::cout<< "\t\tadded AP col: "<<col; //see if we're adding the right cols 
+-						//APcolumns.emplace_back(col);
+-						d.FillSquare({cellX+shift_icons+shift_icons, cellY-shift_icons}, fontSize/1.5, Colors::orange);
+-					}
+ 
+-					//normal case
+-					else
+-					{
+-						d.FillSquare({cellX+shift_icons+shift_icons, cellY-shift_icons}, fontSize/1.5, Colors::red);
+-						//d.DrawText((table[row][col]).c_str(), {cellX, cellY}, Colors::red, fontSize, 0); //only show red C
+-					}
+-				}
+-				else 
+-				{
+-					d.DrawText((table[row][col]).c_str(), {cellX+shift_icons, cellY}, Colors::black, fontSize, 0);
+-					//d.FillNGon({cellX+shift_icons+shift_icons, cellY-shift_icons}, fontSize/1.1, 6, 0, Colors::gray); //to see how to "centre" icons
+-					
+ 
+-				}
+-					
+-			}
+-		}
+-	}
+ 
+-	//print col headers (LAST, so they appear on top)
+-	double headerY = y - ((table.size() + 1) * cellHeight); //slightly above the first row
+-	for (int col = 0; col < static_cast<int>(table[0].size()); ++col) {
+-		double cellX = x + (col + 1) * cellWidth; //offset row headers
+-		d.DrawText(colHeaders[col].c_str(), {cellX, headerY}, Colors::blue, fontSize, 0);
+-	}
++//Julmodel
++
++void PrintModelTable(const std::vector<RuleEntry>& modelTable,
++                     Graphics::Display &d,
++                     const Graphics::point& startPoint,
++                     double fontSize,
++                     double cellWidth,
++                     double cellHeight) 
++{
++    double x = -0.75;
++    double y = 0;
+ 
++	//d.DrawLine({-0.75,0}, {-0.75,0.15}, 0.01, Colors::black);
+ 
+-	//we place RuleTable below the MoveTable
+-    double ruleTableX = x; // Align with MoveTable
+-    double ruleTableY = y - (MoveTable.size() + 1) * cellHeight; // space below MoveTable
++    // Column headers
++    const std::vector<std::string> colHeaders = {"x", "y", "Rule", "Up", "Dn", "Lt", "Rt", "Taken", "→(x,y)"};
++    for (size_t col = 0; col < colHeaders.size(); ++col) {
++        double cellX = x + col * cellWidth;
++        d.DrawText(colHeaders[col].c_str(), {static_cast<float>(cellX), static_cast<float>(y)}, Colors::black, fontSize, 0);
++    }
+ 
+-	//PrintRuleTable(RuleTable, disp, -0.75, 0.05f, 0.2f, 0.1f, 7, RULE_ROW, RULE_COL);
+-    PrintRuleTable(RuleTable, d, {ruleTableX, -ruleTableY}, fontSize, cellWidth, cellHeight, timer, T_row, T_col);
++    // Print each RuleEntry
++    for (size_t i = 0; i < modelTable.size(); ++i) {
++        const RuleEntry& entry = modelTable[i];
++        double rowY = y - ((i + 1) * cellHeight);
++
++        // Columns
++        std::vector<std::string> row = {
++            std::to_string(entry.x),
++            std::to_string(entry.y),
++            std::to_string(entry.ruleID),
++            entry.dirProbs.count(0) ? std::to_string(entry.dirProbs.at(0)) : "-",
++            entry.dirProbs.count(1) ? std::to_string(entry.dirProbs.at(1)) : "-",
++            entry.dirProbs.count(2) ? std::to_string(entry.dirProbs.at(2)) : "-",
++            entry.dirProbs.count(3) ? std::to_string(entry.dirProbs.at(3)) : "-",
++            (entry.dirTaken == -1 ? "-" : std::to_string(entry.dirTaken)),
++            (entry.nextX == -1 ? "-" : "(" + std::to_string(entry.nextX) + "," + std::to_string(entry.nextY) + ")")
++        };
++
++        for (size_t col = 0; col < row.size(); ++col) {
++            double cellX = x + col * cellWidth;
++            d.DrawText(row[col].c_str(), {static_cast<float>(cellX), static_cast<float>(rowY)}, Colors::black, fontSize, 0);
++        }
++    }
+ 
++    // Optional grid lines
++   // d.DrawLine({x, y}, {x + colHeaders.size() * cellWidth, y}, 0.002, Colors::gray); // top
+ }
+ 
+ 
++//Julmodel
++
+ 
+ 
+ //global table end
+@@ -456,6 +1217,11 @@ int currBoard = 0;
+ Witness<puzzleWidth, puzzleHeight> w;
+ InteractiveWitnessState<puzzleWidth, puzzleHeight> iws;
+ std::vector<Witness<puzzleWidth, puzzleHeight>> best;
++
++//for web test
++
++std::vector<std::vector<Witness<4, 4>>> firstSet;
++
+ //std::vector<uint64_t> otherbest;
+ 
+ void GetAllSolutions();
+@@ -1640,6 +2406,98 @@ void DrawPaperLevel(int which)
+ 
+ }
+ 
++
++
++
++
++
++
++
++//may 2025
++
++// forget backtracking, we're using this path instead
++void LogPathCompliance(const Witness<puzzleWidth, puzzleHeight> &w,
++                       const WitnessState<puzzleWidth, puzzleHeight> &ws) {
++    const auto &path = ws.path;
++    if (path.size() < 2) return;
++
++    std::ofstream log("replay_log.txt");
++
++    // Direction sequence
++    log << "Direction sequence (number and label):\n";
++    for (size_t i = 0; i < path.size() - 1; ++i) {
++        auto [x1, y1] = path[i];
++        auto [x2, y2] = path[i + 1];
++        int dir = (x2 > x1) ? 3 : (x2 < x1) ? 2 : (y2 > y1) ? 0 : 1;
++        std::string label = (dir == 0) ? "Up" : (dir == 1) ? "Down" : (dir == 2) ? "Left" : "Right";
++        log << dir << " (" << label << ") ";
++    }
++    log << "\n\n";
++
++    // Full path
++    log << "Full path:\n";
++    for (auto [x, y] : path) log << "(" << x << ", " << y << ") ";
++    log << "\n\n";
++
++    // Rule compliance per step
++    for (size_t i = 1; i < path.size(); ++i) {
++        auto [x1, y1] = path[i - 1];
++        auto [x2, y2] = path[i];
++
++        int dir = (x2 > x1) ? 3 : (x2 < x1) ? 2 : (y2 > y1) ? 0 : 1;
++
++        log << "Step " << i - 1 << ": (" << x1 << ", " << y1 << ") -> (" << x2 << ", " << y2 << ")  | Dir: " << dir << "\n";
++
++        WitnessState<puzzleWidth, puzzleHeight> tempState = ws;
++        tempState.path = std::vector<std::pair<int, int>>(path.begin(), path.begin() + i + 1);
++
++        std::vector<WitnessAction> guesses;
++        w.GetActions(tempState, guesses);
++
++        log << "  Guess: [";
++        for (size_t j = 0; j < guesses.size(); ++j) {
++            log << static_cast<int>(guesses[j]);
++            if (j < guesses.size() - 1) log << ", ";
++        }
++        log << "]\n";
++
++		// for probability table
++		std::vector<int> possibleDirs;
++		for (const auto& action : guesses) {
++			possibleDirs.push_back(static_cast<int>(action));
++		}
++
++
++        for (const auto &action : guesses) {
++            for (const auto &[ruleID, ruleFn] : witnessInferenceRules<puzzleWidth, puzzleHeight>) {
++                ActionType result = ruleFn(w, tempState, action);
++                if (result == MUST_TAKE) {
++                    log << "    FOLLOW (MUST_TAKE) - Rule: " << GetRuleNameByID(ruleID) << "\n";
++                } else if (result == CANNOT_TAKE) {
++                    log << "    DEVIATE (CANNOT_TAKE) - Rule: " << GetRuleNameByID(ruleID) << "\n";
++                } else {
++                    log << "    --- (UNKNOWN) - Rule: " << GetRuleNameByID(ruleID) << "\n";
++                }
++            }
++        }
++    }
++
++    log << "Final Position: (" << path.back().first << ", " << path.back().second << ")\n";
++    log.close();
++}
++
++
++//may 2025
++
++
++
++
++
++
++static bool vp_active = true; 
++
++
++
+ void MyWindowHandler(unsigned long windowID, tWindowEventType eType)
+ {
+ 	if (eType == kWindowDestroyed)
+@@ -1657,8 +2515,12 @@ void MyWindowHandler(unsigned long windowID, tWindowEventType eType)
+ 		InstallFrameHandler(MyFrameHandler, windowID, 0);
+ 		SetNumPorts(windowID, 2); //comment
+ 		ReinitViewports(windowID, {-1, -1, 0,1}, kScaleToSquare);
+-		AddViewport(windowID, {0, -1, 1, 1}, kScaleToSquare);
+-		InstallFrameHandler(MySecondFrameHandler, windowID, nullptr);
++		if(vp_active == true)
++		{
++
++			AddViewport(windowID, {0, -1, 1, 1}, kScaleToSquare);
++			InstallFrameHandler(MySecondFrameHandler, windowID, nullptr);
++		}
+ 
+ 		//printf("Window %ld created\n", windowID);
+ 		//InstallFrameHandler(MyFrameHandler, windowID, 0);
+@@ -1675,14 +2537,29 @@ void MyWindowHandler(unsigned long windowID, tWindowEventType eType)
+ 
+ */
+ ///*
++
++
++		// board 1 
++		///*
+ 		w.AddSeparationConstraint(2, 1, Colors::pink);
+ 		w.AddSeparationConstraint(2, 2, Colors::yellow);
++		w.AddSeparationConstraint(3, 1, Colors::pink);
++		w.AddSeparationConstraint(3, 2, Colors::yellow); 
++		//*/
++
++		// board 2
++		/*
++		w.AddSeparationConstraint(2, 1, Colors::pink);
++		w.AddSeparationConstraint(2, 2, Colors::pink);
++		w.AddSeparationConstraint(3, 1, Colors::yellow);
++		w.AddSeparationConstraint(3, 2, Colors::yellow);
++		*/
+ 
+ 		//w.AddStarConstraint(1, 1, Colors::pink);
+ 		//w.AddStarConstraint(0, 1, Colors::pink);
+ 		//w.AddStarConstraint(1, 1, Colors::pink);
+-		w.AddSeparationConstraint(1, 1, Colors::pink);
+-		w.AddSeparationConstraint(1, 2, Colors::yellow);
++		//w.AddSeparationConstraint(1, 1, Colors::pink);
++		//w.AddSeparationConstraint(1, 2, Colors::yellow);
+ //*/
+ 
+ //		w.AddTriangleConstraint(0, 0, 3);
+@@ -1775,45 +2652,111 @@ void MySecondFrameHandler(unsigned long windowID, unsigned int viewport, void *)
+ {
+ 	if(viewport != 1)
+ 		return;
++	if(vp_active == false)
++		return;
+ 
+ 	Graphics::Display &disp = GetContext(windowID)->display;	
+ 	disp.FillRect({-1, -1, 1, 1}, Colors::white);
+ 
++	WitnessState<puzzleWidth, puzzleHeight> currentState = iws.ws;
++
++	std::vector<WitnessAction> actions; //possble acts not taken or IR related acts (i.e., must_take, cant_take)
++	w.GetActions(currentState, actions);
++
++	std::vector<int> possibleDirs;
++	for (const auto& action : actions) {
++		possibleDirs.push_back(static_cast<int>(action));
++	}
++
+ 	// to draw moves table
+ 	int RULE_ROW = witnessInferenceRules<puzzleWidth, puzzleHeight>.size(); //comment //dynamic rows 
+ 
+ 	
+ 	std::vector < std::vector <std::string>> MoveTable (RULE_ROW, std::vector<std::string>(MOVE_COL,".")); // placeholder, can be replaced with cant_take
++
++	int frame_currX = -1, frame_currY = -1;
++
++	if (!iws.ws.path.empty()) {
++		std::tie(frame_currX, frame_currY) = iws.ws.path.back();  // or use std::pair directly
++	}
++
++	// e.g., now I can pass them // see PrintTable
++	//SomeFunction(frame_currX, frame_currY);
++
+ 	//if i remove this & only use a global vector i get a segmentation error
+ 	//std::vector < std::vector <int>> MoveTable (RULE_ROW, std::vector<int>(MOVE_COL,0)); 
+ 
+-	PrintTable(MoveTable, disp, -0.75, 0.05f, 0.2f, 0.1f, 7, RULE_ROW, MOVE_COL);
++	// here x
++
++	
++	PrintTable(MoveTable, disp, -0.75, 0.05f, 0.2f, 0.1f, 7, RULE_ROW, MOVE_COL, possibleDirs, frame_currX, frame_currY);
++
++
++	//Del_Fill_model_T(model_T);
++
++
++	PrintTable_2(model_T, disp, {static_cast<float>(-0.75), static_cast<float>(0)}, 0.05f, 0.2f, 0.1f);
++
++
++
++
++
++	//PrintModelTable(modelTable, disp, {-0.75, 0}, 0.05f, 0.2f, 0.1f);
++
++
++	
++	//print the truth tABLE HERE FIRST
++
++	std::vector<int> directions = {0, 1};                  // L, R
++    std::vector<std::string> statuses = {"va", "inv"};
++    std::vector<int> rules = {2, 5};
++
++
++    //PrintDynamicTruthTable(directions, statuses, rules);
++
++
++
++	//int num_bits = 3;
++	//auto comboTable = GenerateComboTruthTable(num_bits);
++
++	
++
++
++	// Then pass comboTable to your existing PrintTable function (which uses fixed colHeaders and row headers)
++	//PrintTruthTable(comboTable, disp, {-0.75, 1.0}, 0.05f, 0.2f, 0.1f, 7, 8, 4);
++
+ 
+ 	std::vector <int> APcolumns = APcolumns_main;
+ 
+-	disp.DrawText("Must cross [green circle] ", {-0.75, 0.66}, Colors::darkgreen, 0.02f, 0);
+-	disp.DrawText("Cant cross [red square] ", {-0.75, 0.69}, Colors::red, 0.02f, 0);
+-	disp.DrawText("For [AP] only \n Violates AP/ Cant_cross [orange] ", {-0.75, 0.72}, Colors::orange, 0.02f, 0);
+-	disp.DrawText("Rest [blue-green]", {-0.75, 0.75}, Colors::bluegreen, 0.02f, 0);
++
++	// colours
++	//disp.DrawText("Must cross [green circle] ", {-0.75, 0.66}, Colors::darkgreen, 0.02f, 0);
++	//disp.DrawText("Cant cross [red square] ", {-0.75, 0.69}, Colors::red, 0.02f, 0);
++	//disp.DrawText("For [AP] only \n Violates AP/ Cant_cross [orange] ", {-0.75, 0.72}, Colors::orange, 0.02f, 0);
++	//disp.DrawText("Rest [blue-green]", {-0.75, 0.75}, Colors::bluegreen, 0.02f, 0);
+ 
+ 
+ 
+ 
+ 	//curr state
+-	WitnessState<puzzleWidth, puzzleHeight> currentState = iws.ws;
+ 
+ 	//get all acts
+ 	//MAKE SURE to work with solution paths only --- recheck thissss block
+-	std::vector<WitnessAction> actions; //possble acts not taken or IR related acts (i.e., must_take, cant_take)
+-	w.GetActions(currentState, actions);
++	
+ 
+ 	//show all possible acts (before applying IRs)
+ 	//std::cout << "[possible actions: ";
+-	for (const auto& action : actions) {
++	//for (const auto& action : actions) {
+ 		//std::cout << action << " ";
+-	}
++	//}
+ 	//std::cout << " ]\n";
+ 
++	//std::vector<int> possibleDirs;
++	//for (const auto& action : actions) {
++	//	possibleDirs.push_back(static_cast<int>(action));
++	//}
++
++
+ 	//working with rules
+ 	//apply IRs and log results
+ 	std::unordered_map<WitnessAction, ActionType> filteredLogics;
+@@ -1839,8 +2782,10 @@ void MySecondFrameHandler(unsigned long windowID, unsigned int viewport, void *)
+ 				MoveTable[ruleID][actionValue] = "M"; //this is showing M so we can log- curr pos AND rule broken here //ideas//working
+ 				//RuleTable[ruleID][0] += 1; // this is tracking count, not violation or occurence
+ 
+-				PrintTable(MoveTable, disp, -0.75, 0.05f, 0.2f, 0.1f, 7, RULE_ROW, MOVE_COL);
++				// here x2
++				PrintTable(MoveTable, disp, -0.75, 0.05f, 0.2f, 0.1f, 7, RULE_ROW, MOVE_COL, possibleDirs, frame_currX, frame_currY);
+ 				//PrintRuleTable(RuleTable, disp, -0.75, 0.05f, 0.2f, 0.1f, 7, RULE_ROW, RULE_COL);
++				PrintTable_2(model_T, disp, {static_cast<float>(-0.75), static_cast<float>(0)}, 0.05f, 0.2f, 0.1f);
+ 
+ 				
+ 
+@@ -1890,9 +2835,10 @@ void MySecondFrameHandler(unsigned long windowID, unsigned int viewport, void *)
+ 				}
+ 
+ 
+-
+-				PrintTable(MoveTable, disp, -0.75, 0.05f, 0.2f, 0.1f, 7, RULE_ROW, MOVE_COL);
++					// here x3
++				PrintTable(MoveTable, disp, -0.75, 0.05f, 0.2f, 0.1f, 7, RULE_ROW, MOVE_COL, possibleDirs, frame_currX, frame_currY);
+ 				//PrintRuleTable(RuleTable, disp, -0.75, 0.05f, 0.2f, 0.1f, 7, RULE_ROW, RULE_COL);
++				PrintTable_2(model_T, disp, {static_cast<float>(-0.75), static_cast<float>(0)}, 0.05f, 0.2f, 0.1f);
+ 			}
+ 		}
+ 	}
+@@ -1969,15 +2915,20 @@ void MyDisplayHandler(unsigned long windowID, tKeyboardModifier mod, char key)
+ 			}
+ 		}
+ 			break;
+-		case 'r': recording = !recording; break;
++		//case 'r': recording = !recording; break;
+ 		case '\t':
+-//			if (mod != kShiftDown)
++			if (mod != kShiftDown)
+ //				SetActivePort(windowID, (GetActivePort(windowID)+1)%GetNumPorts(windowID));
+ //			else
+ //			{
+ //				SetNumPorts(windowID, 1+(GetNumPorts(windowID)%MAXPORTS));
+ //			}
+ //			break;
++
++		case 'r':
++			vp_active = !vp_active; //toggle viewport // changed from actual case 'r'
++			break;
++
+ 		case '[':
+ 			if (best.size() > 0)
+ 			{
+@@ -2027,6 +2978,16 @@ void MyDisplayHandler(unsigned long windowID, tKeyboardModifier mod, char key)
+ 	}
+ }
+ 
++/*
++extern "C" {
++    void triggerRKey() {
++        // call the key 'r' 
++        MyDisplayHandler(0, kNoModifier, 'r');
++    }
++}
++*/
++
++
+ bool MyClickHandler(unsigned long, int, int, point3d p, tButtonType , tMouseEventType e)
+ {
+ 	if (e == kMouseDrag) // ignore movement with mouse button down
+@@ -2036,12 +2997,42 @@ bool MyClickHandler(unsigned long, int, int, point3d p, tButtonType , tMouseEven
+ 	{
+ 		if (w.Click(p, iws)) // found goal
+ 		{
+-			if (w.GoalTest(iws.ws))
++			if (w.GoalTestWithTracking(iws.ws))
+ 			{
++				LogPathCompliance(w, iws.ws);
++				for (const auto& loc : iws.ws.path) {
++					logFile_pathSol << loc.first << "," << loc.second << "\t"; 
++				}
+ 				printf("Solved!\n");
++				std::cout << "[Sol]";
++				logFile_rule << " \n\t[Sol] ";
++
++				//parse_rules("ra_cpy.txt");
++
++
++				// parse ra.txt here? logfile_ruleAll
++
++				//modelTable.clear();
++				//parseLogFileToModelTable("r.txt", modelTable);
++
++
++
++
++
++				
+ 			}
+ 			else {
++				LogPathCompliance(w, iws.ws);
++				logFile_pathAll << "\n\nInv\n";
+ 				printf("Invalid solution\n");
++				logFile_rule << " \n\t[Inv] ";
++				std::cout << "[Inv]";
++
++
++				//parse_rules("ra_cpy.txt");
++
++
++				
+ 				//iws.Reset();
+ 			}
+ 		}
+@@ -2054,267 +3045,291 @@ bool MyClickHandler(unsigned long, int, int, point3d p, tButtonType , tMouseEven
+ 
+ 
+ 	//[OLD mouse, drag, working here]
++	//bayesian
+ 
+ 	if (e == kMouseMove)
+-	{
+-		// Update interactive state based on mouse position
+-		w.Move(p, iws);
++{
++    w.Move(p, iws);
++	//std::cout <<"\n\t"<<iws.fracCycle * 0.04; //shows time incessantly 
+ 
+-		// log the current node
+-		if (!iws.ws.path.empty()) {
+-			auto [currX, currY] = iws.ws.path.back();
+-			//std::cout << "Current Node: (" << currX << ", " << currY << ")\n";
+-		}
++    if (!iws.ws.path.empty()) {
++        auto [currX, currY] = iws.ws.path.back();
++    }
+ 
+-		bool shouldLog = false; // Flag to determine whether to log the node
++    bool shouldLog = false;
+ 
+-		// Check the current location
+-		if (!iws.ws.path.empty()) {
+-			auto [currX, currY] = iws.ws.path.back();
++    if (!iws.ws.path.empty()) {
++        auto [currX, currY] = iws.ws.path.back();
+ 
+-			if (!nodes.empty()) {
+-				auto [lastX, lastY] = nodes.back();
++        if (!nodes.empty()) {
++            auto [lastX, lastY] = nodes.back();
++            if (lastX != currX || lastY != currY) {
++                nodes.emplace_back(currX, currY);
++                shouldLog = true;
++            }
++        } else {
++            nodes.emplace_back(currX, currY);
++            shouldLog = true;
++            mustTakeViolationCount = 0;
++            cantTakeViolationCount = 0;
++        }
++    }
++
++    static std::vector<int> mustTakeDirections;
++    static std::vector<int> violatedRules;
++    static std::vector<int> cantTakeDirections;
++    static std::vector<int> violatedRules_forCant;
++    static int previousDirection = -1;
+ 
+-				// avoid duplicate entries and add only new nodes
+-				if (lastX != currX || lastY != currY) {
+-					nodes.emplace_back(currX, currY); // add the current node to the nodes list
+-					shouldLog = true;                //enbl logging for this node
+-				}
+-			} else {
+-				//add the first node
+-				nodes.emplace_back(currX, currY);
+-				shouldLog = true;
+-				std::cout << "First Node: (" << currX << ", " << currY << ")\n";
+-				mustTakeViolationCount = 0; // Reset violation count
+-				cantTakeViolationCount = 0;
+-			}
+-		}
+ 
+-		// Initialize static vectors to track must_take directions and violated rules
+-		static std::vector<int> mustTakeDirections;
+-		static std::vector<int> violatedRules;
++//shouldLog start
++    if (shouldLog) {
+ 
+-		static std::vector<int> cantTakeDirections;
+-		static std::vector<int> violatedRules_forCant;
++		int count_acts = 0;
+ 
++        auto [currX, currY] = nodes.back();
++        auto [lastX, lastY] = (nodes.size() > 1) ? nodes[nodes.size() - 2] : std::make_pair(-1, -1);
++
++		double time_ish = -9.0;
++
++        int directionMoved = -1;
++		std::string dirLabel = "Un";
++		std::cout << " \t["<<iws.ws.path.back().first <<", "<<iws.ws.path.back().second << "]";
++		logFile_ruleAll << " \t["<<iws.ws.path.back().first <<", "<<iws.ws.path.back().second << "]";
++		logFile_pathAll << " \t["<<iws.ws.path.back().first <<", "<<iws.ws.path.back().second << "]";
++
++		//working here for strings/ path/ Jul 06
++
++        if (currX > lastX) directionMoved = 3;
++        else if (currX < lastX) directionMoved = 2;
++        else if (currY > lastY) directionMoved = 0;
++        else if (currY < lastY) directionMoved = 1;
++
++		//this is so redundant, I gotta clear my code
++		// anyway so this logs all directions, regardless of if you reach the end/goal or not
++		switch(directionMoved)
++		{
++			case 0: 
++				if (directionMoved == 0)
++				{
++					dirLabel = "Up";
++					logFile_three << "\t" <<iws.fracCycle*0.04;
++					logFile_three << " [u] "<<iws.fracCycle*0.04 <<"\t";
++				}
++				break;
++			case 1: 
++				if (directionMoved == 1)
++				{
++					dirLabel = "Dn";
++					logFile_three << "\t" <<iws.fracCycle*0.04;
++					
++					logFile_three << " [d] "<<iws.fracCycle*0.04 <<"\t";
++				}
++				break;
+ 
+-		if (shouldLog) {
+-			auto [currX, currY] = nodes.back(); // Current node
+-			auto [lastX, lastY] = (nodes.size() > 1) ? nodes[nodes.size() - 2] : std::make_pair(-1, -1);
++			case 2: 
++				if (directionMoved == 2)
++				{
++					dirLabel = "Lt";
++					logFile_three << "\t" <<iws.fracCycle*0.04;
++					logFile_three << " [l] "<<iws.fracCycle*0.04 <<"\t";
++				}
++				break;
+ 
+-			//so this fucking works dummy
+-			std::cout << "\n\t\t lastXY: " << lastX << ", " << lastY;
+-			std::cout << "\n\t\t currXY: " << currX << ", " << currY; 
++			case 3: 
++				if (directionMoved == 3)
++				{
++					dirLabel = "Rt";
++					logFile_three << "\t" <<iws.fracCycle*0.04;
++					logFile_three << " [r] "<<iws.fracCycle*0.04 <<"\t";
++				}
++				break;
+ 			
+-			// Determine direction moved and assign printable labels
+-			int directionMoved = -1;
+-			std::string directionLabel = "Unknown";
++			case 4:
++				if(directionMoved == 4)
++				{
++					dirLabel = "St";
+ 
+-			if (currX > lastX) {
+-				prev_directionMoved = directionMoved;
+-				prev_directionLabel = directionLabel;
++					std::cout <<"\n_\t reset timer";
++					iws.fracCycle = 0;
+ 
+-				directionMoved = 3;  // Right
+-				directionLabel = "Right";
+-			} else if (currX < lastX) {
++					logFile_three << " [s] "<<iws.fracCycle*0.04 <<"\t";
+ 
+-				prev_directionMoved = directionMoved;
+-				prev_directionLabel = directionLabel;
++				}
++				break;
+ 
+-				directionMoved = 2;  // Left
+-				directionLabel = "Left";
+-			} else if (currY > lastY) {
+-				
+-				prev_directionMoved = directionMoved;
+-				prev_directionLabel = directionLabel;
++			case 5:
++				if(directionMoved == 5)
++				{
++					dirLabel = "En";
++					logFile_three << " [e] "<<iws.fracCycle*0.04 <<"\t";
++				}
++				break;
+ 
+-				directionMoved = 0;  // Up
+-				directionLabel = "Up";
+-			} else if (currY < lastY) {
+-				
+-				prev_directionMoved = directionMoved;
+-				prev_directionLabel = directionLabel;
++			default:
++				dirLabel = "??"; //start or end
++		}
+ 
+-				directionMoved = 1;  // Down
+-				directionLabel = "Down";
+-			}
++        bool isBacktrack = (directionMoved != -1 && previousDirection != -1 &&
++                            ((directionMoved == 0 && previousDirection == 1) ||
++                             (directionMoved == 1 && previousDirection == 0) ||
++                             (directionMoved == 2 && previousDirection == 3) ||
++                             (directionMoved == 3 && previousDirection == 2)));
+ 
+-			//path_taken.emplace_back(directionLabel); //logs multiple times/ repeats
+-			/*
+-			for(auto dir: path_taken)
+-			{
+-				logFile_two << "\t" << dir << ", ";
+-			}
+-			*/
+-			
+-			
++        //std::cout << "\n\ndel Dir: " << directionMoved;
++		//std::cout << "\n\ndel Old_Dir: " << previousDirection;
+ 
+-			//show the directionMoved and its label
+-			std::cout << "\nDir  Moved: " << directionMoved << " (" << directionLabel << ")\n";
++		// when we move to new node/ change dir /and it's not the start
++		if (previousDirection != directionMoved && previousDirection != -1 && directionMoved != -1)
++		{
++			prev_dir = previousDirection; //please make these local
++			new_dir = directionMoved;
+ 
+-			std::cout <<"\n\n last node (path): " << iws.ws.path.back().first << ", " <<iws.ws.path.back().second;
++			//std::cout << "\n\ndel Dir: " << prev_dir; 
++			//std::cout << "\n\ndel Old_Dir: " << new_dir;
++		}
+ 
++        logFile << "\n\nMoved: " << directionMoved;
++        logFile << "\n\n (" << dirLabel <<") ";
++        if (isBacktrack) {
++            //std::cout << " (backtrack)";
++            //logFile << " (backtrack)";
++        }
++        //std::cout << "\n\t'You' moved: " << directionMoved << "\n";
++        //logFile << "\n";
++		//std::cout << "\n\t'You' moved: " << dirLabel << "\n";
++		std::cout << " " << dirLabel << "\n";
+ 
+-			//check must_take compliance lol
+-			if (!mustTakeDirections.empty() && !violatedRules.empty()) {
+-				// If the moved direction is not in the must_take list, it's a violation
+-				if (std::find(mustTakeDirections.begin(), mustTakeDirections.end(), directionMoved) == mustTakeDirections.end()) {
+-					std::cout << "\n\n\tviolation: must_take dir not followed\n";
+-					logFile << "\n\n\tviolation: must_take dir not followed\n";
+-					std::cout << "\n\n\t rule : "<<GetRuleNameByID(violatedRules.back());
+ 
+-					//make sure no other cant_takes are registered
+-					mustTakeLogger = 1; 
+-					ruleAPLogger = 1;
++		logFile_ruleAll << " " << dirLabel << "\n";
++        logFile << "\n";
++		
+ 
++        previousDirection = directionMoved;
++
++        StepInfo step;
++        step.action = directionMoved;
++        step.ruleID = -1;
++        step.type = StepType::NORMAL;
++
++        if (!mustTakeDirections.empty() && !violatedRules.empty() && !isBacktrack) {
++            if (std::find(mustTakeDirections.begin(), mustTakeDirections.end(), directionMoved) == mustTakeDirections.end()) {
++                //std::cout << "violation: must_take\n";
++                logFile << "violation: must_take\n";
++                //std::cout << "rule: " << GetRuleNameByID(violatedRules.back()) << "\n";
++                logFile << "rule: " << GetRuleNameByID(violatedRules.back()) << "\n";
++                mustTakeLogger = 1;
++                ruleAPLogger = 1;
++                RuleTable[violatedRules.back()][1]++;
++                step.ruleID = violatedRules.back();
++                step.type = StepType::DEVIATE;
++                mustTakeDirections.clear();
++                violatedRules.clear();
++            } else {
++                RuleTable[violatedRules.back()][0]++;
++                step.ruleID = violatedRules.back();
++                step.type = StepType::FOLLOW;
++            }
++        }
+ 
++        if (!cantTakeDirections.empty() && !violatedRules_forCant.empty() && !isBacktrack) {
++            if (std::find(cantTakeDirections.begin(), cantTakeDirections.end(), directionMoved) != cantTakeDirections.end()) {
++                //std::cout << "violation: cant_take\n";
++                logFile << "violation: cant_take\n";
++                //std::cout << "rule: " << GetRuleNameByID(violatedRules_forCant.back()) << "\n";
++                logFile << "rule: " << GetRuleNameByID(violatedRules_forCant.back()) << "\n";
++                RuleTable[violatedRules_forCant.back()][1]++;
++                step.ruleID = violatedRules_forCant.back();
++                step.type = StepType::DEVIATE;
++                cantTakeDirections.clear();
++                violatedRules_forCant.clear();
++            } else {
++                RuleTable[violatedRules_forCant.back()][0]++;
++                step.ruleID = violatedRules_forCant.back();
++                step.type = StepType::FOLLOW;
++            }
++        }
+ 
+-					//MoveTable[violatedRules.back()][1] = "S";
+-					
+-					RuleTable[violatedRules.back()][1]++;  // add to neg col (must_take violated) //gotta remove this too if c_t shows CUS OF m_t violation
+-
+-					mustTakeViolationCount++;  // track viols
+-					mustTakeDirections.clear();  // reset for next move
+-					violatedRules.clear();
+-				} else {
+-					if (RuleTable[violatedRules.back()][0] + RuleTable[violatedRules.back()][1] < RuleTable[violatedRules.back()][2])
+-						RuleTable[violatedRules.back()][0]++;  // add to pos col (must_take followed)
+-					else
+-					{
+-						std::cout<< "\n\t_exceeds occur";
+-					}
+-				}
+-			}
++        std::vector<WitnessAction> actions;
++        w.GetActions(iws.ws, actions);
+ 
+-			// same for cant_take
+-			if (!cantTakeDirections.empty() && !violatedRules_forCant.empty()) {
+-				// If the moved direction *is* in the cant_take list, it's a violation
+-				if (std::find(cantTakeDirections.begin(), cantTakeDirections.end(), directionMoved) != cantTakeDirections.end()) {
+-					std::cout << "\n\n\tviolation: cant_take dir taken\n";
+-					logFile << "\n\n\tviolation: cant_take dir taken\n";
+-
+-					RuleTable[violatedRules_forCant.back()][1]++;  // add to neg colll (cant_take violated)
+-
+-					cantTakeViolationCount++;  // track violations - del redundant containers
+-					cantTakeDirections.clear();
+-					violatedRules_forCant.clear();
+-				} else {
+-					if(RuleTable[violatedRules_forCant.back()][0] + RuleTable[violatedRules_forCant.back()][1] < RuleTable[violatedRules_forCant.back()][2])
+-						RuleTable[violatedRules_forCant.back()][0]++;  // add to pos col (cant_take followed)
+-					else
+-					{
+-						std::cout<< "\n\t_exceeds occur";
+-					}
+-				}
+-			}
+ 
+ 
++		// issues to fix- backtracking (for this)
++		// fix table exclude the previous code
++		// just rewrite
+ 
+-			
++		//case where we dont even near the r1 separation block/ node??
+ 
+-			// Log possible actions
+-			std::vector<WitnessAction> actions;
+-			w.GetActions(iws.ws, actions);
++//rc is super rule- it can be broke down into a variant of the unfollowed rules in the region???
++//must_cross was deviated from {not cant take}
++// only gonna get RC, m_c, ATP, R1, towardsGoal {no stars in dataset}
++// only two colours
++// longer dist m_c is not here- but rc covers that
+ 
+-			logFile << "[";
+-			for (size_t i = 0; i < actions.size(); ++i) {
+-				logFile << actions[i];
+-				if (i < actions.size() - 1) logFile << ", ";
+-			}
+-			logFile << "] ";
+-
+-			// Apply inference rules and log results
+-			std::unordered_map<WitnessAction, ActionType> filteredLogics;
+-			std::vector<std::string> resultLog;
+-
+-			for (const auto& action : actions) {
+-				ActionType overallResult = UNKNOWN;
+-
+-				for (const auto& [ruleID, ruleFunction] : witnessInferenceRules<puzzleWidth, puzzleHeight>) {
+-					ActionType result = ruleFunction(w, iws.ws, action);
+-
+-					if (result != UNKNOWN) {
+-
+-						if (result == CANNOT_TAKE) {
+-
+-							
+-							
+-							overallResult = CANNOT_TAKE;
+-
+-							if (mustTakeLogger == 1 && ruleAPLogger == 1) //we ignore cant_updates
+-							{
+-								std::cout<<"\n\n\t\t\tcant_take by default as m_t violated";
+-								//mustTakeLogger = 0; // reset??
+-								//ruleAPLogger = 0; // this is wrong man
+-
+-								//overallResult = UNKNOWN; // harsh idea
+-								//overallResult = INCONSEQUENTIAL;  //comment
+-
+-								continue;
+-							}
+-							else
+-							{
+-								// Check if the player actually tried to take this action before adding
+-								if (directionMoved == action) {  
+-									cantTakeDirections.push_back(action);  // Track must_take violations
+-									violatedRules_forCant.push_back(ruleID);
+-
+-									if (ruleID >= 0 && ruleID < NUM_RULES && action >= 0 && action < RULE_ROW) {
+-										RuleTable[ruleID][2]++; // Increment CANNOT_TAKE count
+-										
+-										std::stringstream ss;
+-										ss << action;
+-									}
+-								}
+-							}
+-							
+-						}
++//how to handle multiple rules??
+ 
+-						if (result == MUST_TAKE) {
+-							overallResult = MUST_TAKE;
+-							//if (action != kEnd && action != kStart) { // Exclude END and START actions
++        //std::cout << "Guess: [";
++        logFile << "Guess: [";
++        for (size_t i = 0; i < actions.size(); ++i) {
+ 
+-								// Only add the MUST_TAKE action if it's not already taken
+-								if (std::find(mustTakeDirections.begin(), mustTakeDirections.end(), action) == mustTakeDirections.end()) {
+-									mustTakeDirections.push_back(action);
+-									violatedRules.push_back(ruleID);
+-									std::cout << "\n\t\t\t logging rule for m_t: " <<GetRuleNameByID(ruleID);
++			count_acts = 0;
++            //std::cout << static_cast<int>(actions[i]);
++            logFile << static_cast<int>(actions[i]);
++            if (i < actions.size() - 1) {
++				count_acts += 1;
++                //std::cout << ", ";// << "\t "<<count_acts;
++                logFile << ", ";
++            }
++        }
++        //std::cout << "]\n";
++        logFile << "]\n";
++
++        for (const auto& action : actions) {
++            ActionType overallResult = UNKNOWN;
++
++            for (const auto& [ruleID, ruleFunction] : witnessInferenceRules<puzzleWidth, puzzleHeight>) {
++                ActionType result = ruleFunction(w, iws.ws, action);
++                if (result == UNKNOWN) continue;
++
++                if (result == CANNOT_TAKE) {
++                    if (mustTakeLogger == 1 && ruleAPLogger == 1) continue;
++                    if (directionMoved == action) {
++                        cantTakeDirections.push_back(action);
++                        violatedRules_forCant.push_back(ruleID);
++                        RuleTable[ruleID][2]++;
++                    }
++                    overallResult = CANNOT_TAKE;
++                }
+ 
+-									if (ruleID >= 0 && ruleID < NUM_RULES && action >= 0 && action < RULE_ROW) {
+-										RuleTable[ruleID][2]++; //increment MUST_TAKE occurence count
++                if (result == MUST_TAKE) {
++                    if (std::find(mustTakeDirections.begin(), mustTakeDirections.end(), action) == mustTakeDirections.end()) {
++                        mustTakeDirections.push_back(action);
++                        violatedRules.push_back(ruleID);
++                        RuleTable[ruleID][2]++;
++                    }
++                    overallResult = MUST_TAKE;
++                }
+ 
+-										std::stringstream ss;
+-										ss << action;
+-									}
+-								}
+-							//}
+-						}
+-						
++				RuleTable[ruleID][4] = count_acts;
++            }
++        }
+ 
+-					
+-					}
+-				}
++        pathLog.push_back(step);
++    }
+ 
+-				filteredLogics[action] = overallResult;
+ 
+-				// Prepare result string
+-				std::string resultString = std::to_string(action) + " ";
+-				resultString += (overallResult == MUST_TAKE ? "must_take" :
+-								overallResult == CANNOT_TAKE ? "cant_take" : "unknown");
+-				resultLog.push_back(resultString);
+-			}
+ 
+-			// Log filtered actions with results
+-			logFile << "[";
+-			for (size_t i = 0; i < resultLog.size(); ++i) {
+-				logFile << resultLog[i];
+-				if (i < resultLog.size() - 1) logFile << ", ";
+-			}
+-			logFile << "]\n";
+-		}
+-	}
++//shouldLog end
++
++
++
++
++
++}
++
++
+ 
+-	//mouse, drag, working here
+ 
+ 
+ 	//mouse end, work
+diff --git a/build/web/Makefile b/build/web/Makefile
+index c7070235..0b981c51 100644
+--- a/build/web/Makefile
++++ b/build/web/Makefile
+@@ -23,6 +23,7 @@ PROJECTS = \
+   utils \
+   apps/snakebird \
+   apps/arm \
++  apps/witness_test \
+   demos/fastmap \
+   demos/pancake \
+   demos/suboptimal-map \
+diff --git a/environments/Witness.h b/environments/Witness.h
+index 98babf01..4afd0986 100644
+--- a/environments/Witness.h
++++ b/environments/Witness.h
+@@ -251,6 +251,9 @@ static bool operator==(const WitnessState<width, height> &a, const WitnessState<
+ template<int width, int height>
+ class InteractiveWitnessState {
+ public:
++
++    mutable int fracCycle = 0; 
++
+     void Reset()
+     {
+         ws.Reset();
+@@ -260,11 +263,19 @@ public:
+ 
+     void IncrementTime()
+     {
+-        if (currState != kWaitingStart) return;
++        if (currState != kWaitingStart) 
++        {   
++            fracCycle += 1;
++            return;
++        }
+         frac += 0.04;
+-        if (frac > 3) frac = 0;
++        if (frac > 3) 
++        {
++            frac = 0;
++        }
+     }
+ 
++
+     WitnessState<width, height> ws;
+     // for drawing
+     float frac;
+diff --git a/papers/TheWitnessEditor/include/WitnessInferenceRule.h b/papers/TheWitnessEditor/include/WitnessInferenceRule.h
+index 4f0be676..e75357ae 100644
+--- a/papers/TheWitnessEditor/include/WitnessInferenceRule.h
++++ b/papers/TheWitnessEditor/include/WitnessInferenceRule.h
+@@ -319,7 +319,7 @@ enum WitnessInferenceRule {
+ };
+ 
+ //comment
+-std::string GetRuleNameByID(int ruleID) {
++inline std::string GetRuleNameByID(int ruleID) {
+     switch (ruleID) {
+         case kSeparationRule: return "R1 Spr";
+         case kPathConstraintRule: return "R2 PC";

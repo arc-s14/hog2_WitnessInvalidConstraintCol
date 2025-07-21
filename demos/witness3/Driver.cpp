@@ -27,20 +27,22 @@
 #include "Witness.h"
 
 
-std::vector<std::vector<Witness<3, 3>>> firstSet;
-std::vector<std::vector<Witness<4, 4>>> secondSet;
+// comments here // Jul 20
+std::vector<std::vector<Witness<3, 3>>> firstSet; // first set of puzzles 
+std::vector<std::vector<Witness<4, 4>>> secondSet; // second set of puzzles for 4x4 board which we will do too 
+// use this for your 3-4 set of puzzles
 
 //Witness<3, 3> wp33_1a;
 //Witness<3, 3> wp33_1b;
 //Witness<3, 3> wp33_1c;
 Witness<3, 3> wp33a;
-Witness<4, 4> wp44;
+Witness<4, 4> wp44; // a 4x4 board that we'll probably change as we keep solving
 
 InteractiveWitnessState<3, 3> iws3;
-InteractiveWitnessState<4, 4> iws4;
+InteractiveWitnessState<4, 4> iws4; // iws for wp44
 
-int whichPuzzle = 0;
-bool redrawBackground = true;
+int whichPuzzle = 0; // variable we'll use to increment the puzzle
+bool redrawBackground = true; // this too?
 
 int main(int argc, char* argv[])
 {
@@ -76,6 +78,11 @@ void MyWindowHandler(unsigned long windowID, tWindowEventType eType)
 //		ReinitViewports(windowID, {-1.0f, -0.33333333f, -0.33333333f, 0.33333333f}, kScaleToFill);
 //		AddViewport(windowID, {-0.33333333f, -0.33333333f, 0.33333333f, 0.33333333f}, kScaleToFill); // kTextView
 //		AddViewport(windowID, {0.33333333f, -0.33333333f, 1.0f, 0.33333333f}, kScaleToFill); // kTextView
+
+
+		// comments 
+		// I'm gonna mess with this file for a bit to add my 3-4 puzzles
+		// arranging the viewports 
 		ReinitViewports(windowID, {-1.0f, -1.0f, -0.33333333f, 1.0f}, kScaleToSquare);
 		AddViewport(windowID, {-0.33333333f, -1.0f, 0.33333333f, 1.0f}, kScaleToSquare); // kTextView
 		AddViewport(windowID, {0.33333333f, -1.0f, 1.0f, 1.0f}, kScaleToSquare); // kTextView
@@ -83,9 +90,9 @@ void MyWindowHandler(unsigned long windowID, tWindowEventType eType)
 		firstSet.resize(3);
 		
 		Witness<3, 3> tmp33;
-		submitTextToBuffer("");
+		submitTextToBuffer(" submitTextToBuffer : test - witness 3 "); // add the submit text to buffer part ?? //comments
 		// puzzle 1
-		tmp33.ClearTetrisConstraints();
+		tmp33.ClearTetrisConstraints(); // from witness.h to clear the specific types of constraints that are on the board // comments
 		tmp33.AddTetrisConstraint(0, 2, 1);
 		tmp33.AddTetrisConstraint(1, 2, 1);
 		tmp33.AddTetrisConstraint(1, 1, 10);
@@ -141,7 +148,7 @@ void MyWindowHandler(unsigned long windowID, tWindowEventType eType)
 		tmp33.AddTetrisConstraint(1, 0, 2);
 		firstSet[2].push_back(tmp33);
 		
-		secondSet.resize(3);
+		secondSet.resize(3); // we won't need this as we'll use 4x4 anyway // comments
 		Witness<4, 4> tmp44;
 		// puzzle 4
 		tmp44.ClearTetrisConstraints();
@@ -205,6 +212,8 @@ void MyWindowHandler(unsigned long windowID, tWindowEventType eType)
 	
 }
 
+// comments // the fucntion we'll modify to account for new boards as we keep going 
+
 void MyFrameHandler(unsigned long windowID, unsigned int viewport, void *)
 {
 	Graphics::Display &display = getCurrentContext()->display;
@@ -241,7 +250,7 @@ void MyFrameHandler(unsigned long windowID, unsigned int viewport, void *)
 		display.DrawText("Puzzles Complete!", {0.0f, 0.0f}, Colors::black, 0.2f, Graphics::textAlignCenter);
 	}
 	if (viewport == 2)
-		redrawBackground = false;
+		redrawBackground = false; // comments use this too
 }
 
 
@@ -253,7 +262,7 @@ void MyDisplayHandler(unsigned long windowID, tKeyboardModifier mod, char key)
 		case 'r':
 		{
 			whichPuzzle = 0;
-			submitTextToBuffer("");
+			submitTextToBuffer(" Inside MyDisplayHandler ");
 			redrawBackground = true;
 			iws3.Reset();
 		}
@@ -282,19 +291,19 @@ bool MyClickHandler(unsigned long , int viewport, int windowX, int windowY, poin
 		{
 			if (firstSet[whichPuzzle][0].Click(p, iws3))
 			{
-				int cnt = 0;
+				int cnt = 0; // this is for the viewport
 				for (int x = 0; x < firstSet[whichPuzzle].size(); x++)
 				{
-					if (firstSet[whichPuzzle][x].GoalTest(iws3.ws))
+					if (firstSet[whichPuzzle][x].GoalTest(iws3.ws)) // comments // on solved, move to next // we inc cnt, why??
 						cnt++;
 				}
-				if (cnt == firstSet[whichPuzzle].size())
+				if (cnt == firstSet[whichPuzzle].size()) // okay so when cnt matches the puzzle number we know we've solved it so we redraw bg
 				{
 					std::string tmp = getTextBuffer();
-					submitTextToBuffer((GetPuzzleSVG()+"<br/>"+tmp).c_str());
-					whichPuzzle++;
-					iws3.Reset();
-					redrawBackground = true;
+					submitTextToBuffer((GetPuzzleSVG()+"<br/>"+tmp).c_str()); // we don't need the svgs ... ? // still add? // comments
+					whichPuzzle++; // inc this // comments
+					iws3.Reset(); // reset board
+					redrawBackground = true; // then redraw
 				}
 				else {
 					printf("Invalid solution\n");

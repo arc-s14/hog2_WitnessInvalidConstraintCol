@@ -321,12 +321,12 @@ enum WitnessInferenceRule {
 //comment
 inline std::string GetRuleNameByID(int ruleID) {
     switch (ruleID) {
-        case kSeparationRule: return "R1 Spr";
-        case kPathConstraintRule: return "R2 PC";
-        case kInsideSolutionTreeRule: return "R3 IST";
-        case kRegionCompletionRule: return "R4 RC";
-        case kAlongThePathRule: return "[AtP]";
-        case kTowardsGoalRule: return "R6 TG";
+        case kSeparationRule: return "R1";
+        case kPathConstraintRule: return "R2";
+        case kInsideSolutionTreeRule: return "R3";
+        case kRegionCompletionRule: return "R4";
+        case kAlongThePathRule: return "R5";
+        case kTowardsGoalRule: return "R6";
         default: return "UnkRule";
     }
 }
