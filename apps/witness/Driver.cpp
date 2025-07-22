@@ -615,75 +615,11 @@ void PrintTable_2(const std::vector<std::vector<float>>& table,
 
 
 
-void PrintTable_2_old(const std::vector<std::vector<float>>& table,
-                  Graphics::Display &d,
-                  const Graphics::point& startPoint,
-                  double fontSize,
-                  double cellWidth,
-                  double cellHeight) 
-{
-
-	// d.DrawLine({-0.75,0}, {-0.75,0.15}, 0.01, Colors::black);
-    double x = startPoint.x;
-    double y = startPoint.y;
-
-    x = -0.75;
-    y = 0.75;
-
-    // Draw rows (rules)
-    for (int row = table.size() - 1; row >= 0; --row) {
-
-		
-        double cellY = y - ((table.size() - row) * cellHeight);
-
-        for (int col = -1; col < static_cast<int>(table[0].size()); ++col) {
-            double cellX = x + (col + 1) * cellWidth;
-
-            if (col == -1) {
-                // Rule name (row header)
-                d.DrawText(GetRuleNameByID(row).c_str(), {static_cast<float>(x), static_cast<float>(cellY)}, Colors::orange, fontSize, 0);
-            } else {
-                std::string valueStr;
-                if (col == 3 || col == 4) {
-                    // Format percentage & guess columns as decimals (e.g., 47.0%)
-                    float value = table[row][col] / 100.0f;
-                    std::ostringstream oss;
-                    oss << std::fixed << std::setprecision(2) << value;
-                    valueStr = oss.str();
-                } else {
-                    valueStr = std::to_string(table[row][col]);
-                }
-                d.DrawText(valueStr.c_str(), { static_cast<float>(cellX), static_cast<float>(cellY)}, Colors::black, fontSize, 0);
-            }
-        }
-			
-    }
-
-    // Column headers
-    double headerY = y - ((table.size() + 1) * cellHeight);
-    const std::vector<std::string> colHeaders = {"Pri", "Pos", "Dir", "Up_", "Dwn", "Lft", "Rgt"};
-
-	
-    for (int col = 0; col < static_cast<int>(table[0].size()); ++col) {
-        double cellX = x + (col + 1) * cellWidth;
-        d.DrawText(colHeaders[col].c_str(), {static_cast<float>(cellX), static_cast<float>(headerY)}, Colors::orange, fontSize, 0);
-    }
-		
-
-}
-
-
 // from here for Julyx
 
 
 // dec first
 
-void PrintModelTable(const std::vector<RuleEntry>& modelTable,
-                     Graphics::Display &d,
-                     const Graphics::point& startPoint,
-                     double fontSize,
-                     double cellWidth,
-                     double cellHeight);
 
 #include <fstream>
 #include <sstream>
@@ -1142,54 +1078,6 @@ void PrintTable(const std::vector<std::vector<std::string>>& table,
 
 //Julmodel
 
-void PrintModelTable(const std::vector<RuleEntry>& modelTable,
-                     Graphics::Display &d,
-                     const Graphics::point& startPoint,
-                     double fontSize,
-                     double cellWidth,
-                     double cellHeight) 
-{
-    double x = -0.75;
-    double y = 0;
-
-	//d.DrawLine({-0.75,0}, {-0.75,0.15}, 0.01, Colors::black);
-
-    // Column headers
-    const std::vector<std::string> colHeaders = {"x", "y", "Rule", "Up", "Dn", "Lt", "Rt", "Taken", "→(x,y)"};
-    for (size_t col = 0; col < colHeaders.size(); ++col) {
-        double cellX = x + col * cellWidth;
-        d.DrawText(colHeaders[col].c_str(), {static_cast<float>(cellX), static_cast<float>(y)}, Colors::black, fontSize, 0);
-    }
-
-    // Print each RuleEntry
-    for (size_t i = 0; i < modelTable.size(); ++i) {
-        const RuleEntry& entry = modelTable[i];
-        double rowY = y - ((i + 1) * cellHeight);
-
-        // Columns
-        std::vector<std::string> row = {
-            std::to_string(entry.x),
-            std::to_string(entry.y),
-            std::to_string(entry.ruleID),
-            entry.dirProbs.count(0) ? std::to_string(entry.dirProbs.at(0)) : "-",
-            entry.dirProbs.count(1) ? std::to_string(entry.dirProbs.at(1)) : "-",
-            entry.dirProbs.count(2) ? std::to_string(entry.dirProbs.at(2)) : "-",
-            entry.dirProbs.count(3) ? std::to_string(entry.dirProbs.at(3)) : "-",
-            (entry.dirTaken == -1 ? "-" : std::to_string(entry.dirTaken)),
-            (entry.nextX == -1 ? "-" : "(" + std::to_string(entry.nextX) + "," + std::to_string(entry.nextY) + ")")
-        };
-
-        for (size_t col = 0; col < row.size(); ++col) {
-            double cellX = x + col * cellWidth;
-            d.DrawText(row[col].c_str(), {static_cast<float>(cellX), static_cast<float>(rowY)}, Colors::black, fontSize, 0);
-        }
-    }
-
-    // Optional grid lines
-   // d.DrawLine({x, y}, {x + colHeaders.size() * cellWidth, y}, 0.002, Colors::gray); // top
-}
-
-
 //Julmodel
 
 
@@ -1229,8 +1117,12 @@ int whichPuzzle = 0; // variable we'll use to increment the puzzle
 int puzzleNum = 4; // fix at 4 if we have 4 puzzles
 bool redrawBackground = true; // this too?
 
+Witness<4, 4> tmp44w;
 
 Witness<puzzleWidth, puzzleHeight> w;
+
+//w = tmp44w;
+
 InteractiveWitnessState<puzzleWidth, puzzleHeight> iws;
 std::vector<Witness<puzzleWidth, puzzleHeight>> best;
 
@@ -2465,7 +2357,8 @@ void LogPathCompliance(const Witness<puzzleWidth, puzzleHeight> &w,
         tempState.path = std::vector<std::pair<int, int>>(path.begin(), path.begin() + i + 1);
 
         std::vector<WitnessAction> guesses;
-        w.GetActions(tempState, guesses);
+        //tmp44w.GetActions(tempState, guesses);
+		w.GetActions(iws.ws, guesses);
 
         log << "  Guess: [";
         for (size_t j = 0; j < guesses.size(); ++j) {
@@ -2528,23 +2421,27 @@ void MyWindowHandler(unsigned long windowID, tWindowEventType eType)
 		InstallFrameHandler(MyFrameHandler, windowID, 0);
 		SetNumPorts(windowID, 2); //comment
 		ReinitViewports(windowID, {-1, -1, 0,1}, kScaleToSquare);
-		if(vp_active == true)
-		{
+//		if(vp_active == true)
+//		{
 
 			AddViewport(windowID, {0, -1, 1, 1}, kScaleToSquare);
 			InstallFrameHandler(MySecondFrameHandler, windowID, nullptr);
-		}
+//		}
 
 		puzzleSet.resize(4); // 4 puzzles for now // Jul20
 
 		submitTextToBuffer(" submitTextToBuffer : test - witness 3 "); // add the submit text to buffer part ?? //comments
 
-		Witness<4, 4> tmp44w;
 
 		// puzzle 1
 		tmp44w.ClearSeparationConstraints();
-		tmp44w.AddSeparationConstraint(1, 2, Colors::pink);
-		tmp44w.AddSeparationConstraint(2, 2, Colors::yellow);
+		//tmp44w.AddSeparationConstraint(1, 2, Colors::pink);
+		//tmp44w.AddSeparationConstraint(2, 2, Colors::yellow);
+
+		tmp44w.AddSeparationConstraint(2, 1, Colors::pink);
+		tmp44w.AddSeparationConstraint(2, 2, Colors::purple);
+		tmp44w.AddSeparationConstraint(1, 1, Colors::pink);
+		tmp44w.AddSeparationConstraint(1, 2, Colors::purple); 
 
 		puzzleSet[0].push_back(tmp44w);
 
@@ -2572,6 +2469,8 @@ void MyWindowHandler(unsigned long windowID, tWindowEventType eType)
 		tmp44w.AddSeparationConstraint(2, 1, Colors::yellow);
 
 		puzzleSet[3].push_back(tmp44w);
+		tmp44w.ClearSeparationConstraints();
+
 
 
 
@@ -2592,6 +2491,11 @@ void MyWindowHandler(unsigned long windowID, tWindowEventType eType)
 */
 ///*
 
+		//board 0
+		//w = tmp44w;
+
+		//
+
 
 		// board 1 
 		/*
@@ -2605,12 +2509,12 @@ void MyWindowHandler(unsigned long windowID, tWindowEventType eType)
 		*/
 
 		// board 2
-		///*
+		/*
 		w.AddSeparationConstraint(2, 1, Colors::pink);
 		w.AddSeparationConstraint(2, 2, Colors::pink);
 		w.AddSeparationConstraint(3, 1, Colors::yellow);
 		w.AddSeparationConstraint(3, 2, Colors::yellow);
-		//*/
+		*/
 
 		// board 3
 		/*
@@ -2707,15 +2611,20 @@ void MyWindowHandler(unsigned long windowID, tWindowEventType eType)
 //comment frame handler
 void MyFrameHandler(unsigned long windowID, unsigned int viewport, void *)
 {
-	
+	if (whichPuzzle < puzzleNum) // avoid going out of bounds 
+		w = puzzleSet[whichPuzzle][0]; // always update w based on whichPuzzle
+
 	if(viewport != 0)
 		return;
+	
 	/*
 	Graphics::Display &d = GetContext(windowID)->display;
 	iws.IncrementTime();
 	w.Draw(d);
 	w.Draw(d, iws);
 	*/
+
+	//	w = tmp44w;
 
 
 	Graphics::Display &display = getCurrentContext()->display;
@@ -2726,10 +2635,11 @@ void MyFrameHandler(unsigned long windowID, unsigned int viewport, void *)
 		if (redrawBackground)
 		{
 			display.StartBackground();
-			puzzleSet[whichPuzzle][0].Draw(display); // viewport is 0
+			//w = puzzleSet[whichPuzzle][0];
+			w.Draw(display); // viewport is 0
 			display.EndBackground();
 		}
-		puzzleSet[whichPuzzle][0].Draw(display, iws);
+		w.Draw(display, iws);
 	}
 	else if (whichPuzzle == puzzleNum){
 		if (redrawBackground)
@@ -2740,8 +2650,8 @@ void MyFrameHandler(unsigned long windowID, unsigned int viewport, void *)
 		}
 		display.DrawText("Puzzles Completed!", {0.0f, 0.0f}, Colors::pink, 0.1f, Graphics::textAlignCenter);
 	}
-	if (viewport == 1) // for the table info viewport
-		redrawBackground = false; // comments use this too
+	//if (viewport == 1) // for the table info viewport
+	//	redrawBackground = false; // comments use this too
 
 
 }
@@ -2752,8 +2662,11 @@ void MySecondFrameHandler(unsigned long windowID, unsigned int viewport, void *)
 {
 	if(viewport != 1)
 		return;
-	if(vp_active == false)
-		return;
+	//if(vp_active == false)
+	//	return;
+	 //w = tmp44w;
+
+	
 
 	Graphics::Display &disp = GetContext(windowID)->display;	
 	disp.FillRect({-1, -1, 1, 1}, Colors::white);
@@ -2761,7 +2674,9 @@ void MySecondFrameHandler(unsigned long windowID, unsigned int viewport, void *)
 	WitnessState<puzzleWidth, puzzleHeight> currentState = iws.ws;
 
 	std::vector<WitnessAction> actions; //possble acts not taken or IR related acts (i.e., must_take, cant_take)
+	//tmp44w.GetActions(currentState, actions);
 	w.GetActions(currentState, actions);
+
 
 	std::vector<int> possibleDirs;
 	for (const auto& action : actions) {
@@ -2794,7 +2709,7 @@ void MySecondFrameHandler(unsigned long windowID, unsigned int viewport, void *)
 
 	//Del_Fill_model_T(model_T);
 
-
+	// prior posterior table here
 	PrintTable_2(model_T, disp, {static_cast<float>(-0.75), static_cast<float>(0)}, 0.05f, 0.2f, 0.1f);
 
 
@@ -2885,7 +2800,7 @@ void MySecondFrameHandler(unsigned long windowID, unsigned int viewport, void *)
 				// here x2
 				PrintTable(MoveTable, disp, -0.75, 0.05f, 0.2f, 0.1f, 7, RULE_ROW, MOVE_COL, possibleDirs, frame_currX, frame_currY);
 				//PrintRuleTable(RuleTable, disp, -0.75, 0.05f, 0.2f, 0.1f, 7, RULE_ROW, RULE_COL);
-				PrintTable_2(model_T, disp, {static_cast<float>(-0.75), static_cast<float>(0)}, 0.05f, 0.2f, 0.1f);
+				//PrintTable_2(model_T, disp, {static_cast<float>(-0.75), static_cast<float>(0)}, 0.05f, 0.2f, 0.1f);
 
 				
 
@@ -2938,7 +2853,7 @@ void MySecondFrameHandler(unsigned long windowID, unsigned int viewport, void *)
 					// here x3
 				PrintTable(MoveTable, disp, -0.75, 0.05f, 0.2f, 0.1f, 7, RULE_ROW, MOVE_COL, possibleDirs, frame_currX, frame_currY);
 				//PrintRuleTable(RuleTable, disp, -0.75, 0.05f, 0.2f, 0.1f, 7, RULE_ROW, RULE_COL);
-				PrintTable_2(model_T, disp, {static_cast<float>(-0.75), static_cast<float>(0)}, 0.05f, 0.2f, 0.1f);
+				//PrintTable_2(model_T, disp, {static_cast<float>(-0.75), static_cast<float>(0)}, 0.05f, 0.2f, 0.1f);
 			}
 		}
 	}
@@ -3107,8 +3022,8 @@ bool MyClickHandler(unsigned long, int, int, point3d p, tButtonType , tMouseEven
 						for (const auto& loc : iws.ws.path) {
 							logFile_pathSol << loc.first << "," << loc.second << "\t"; 
 						}
-						printf("Solved puzzle- %d!\n", whichPuzzle+1);
-						std::cout << "[Solved]";
+						printf("Solved!\n");
+						std::cout << "[Sol] P-" << whichPuzzle + 1;
 						logFile_rule << " \n\t[Sol] ";
 
 						whichPuzzle++;
@@ -3123,7 +3038,7 @@ bool MyClickHandler(unsigned long, int, int, point3d p, tButtonType , tMouseEven
 					logFile_pathAll << "\n\nInv\n";
 					printf("Invalid solution\n");
 					logFile_rule << " \n\t[Inv] ";
-					std::cout << "[Inv]";
+					std::cout << "[Inv] P-" << whichPuzzle + 1;
 
 					iws.Reset();
 				}
@@ -3145,8 +3060,10 @@ bool MyClickHandler(unsigned long, int, int, point3d p, tButtonType , tMouseEven
 {
 	//		printf("Move\n");
 	if (whichPuzzle < puzzleNum)
-		puzzleSet[whichPuzzle][0].Move(p, iws); // viewport 0
-		
+	{
+		w=puzzleSet[whichPuzzle][0]; 
+		w.Move(p, iws); // viewport 0
+	}	
     //w.Move(p, iws);
 	//std::cout <<"\n\t"<<iws.fracCycle * 0.04; //shows time incessantly 
 
@@ -3349,7 +3266,8 @@ bool MyClickHandler(unsigned long, int, int, point3d p, tButtonType , tMouseEven
         }
 
         std::vector<WitnessAction> actions;
-        w.GetActions(iws.ws, actions);
+       // tmp44w.GetActions(iws.ws, actions);
+		w.GetActions(iws.ws, actions);
 
 
 
