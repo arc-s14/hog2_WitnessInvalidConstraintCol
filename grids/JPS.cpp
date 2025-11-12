@@ -11,6 +11,13 @@
 #include <algorithm>
 #include "Graphics.h"
 
+
+/**
+ * @brief Constructor for JPS.
+ * Initializes the jump point map based on the terrain of the input map.
+ * Marks jump points and boundaries.
+ * @param m Pointer to the map object.
+ */
 JPS::JPS(Map *m)
 {
 	env = 0;
@@ -60,6 +67,15 @@ JPS::JPS(Map *m)
 //	}
 }
 
+/**
+ * @brief Initializes the search for a path from 'from' to 'to'.
+ * Prepares the open/closed list and sets up the initial node.
+ * @param env Pointer to the map environment.
+ * @param from Start location.
+ * @param to Goal location.
+ * @param thePath Reference to the path vector to be filled.
+ * @return False if the start and goal are the same, true otherwise.
+ */
 bool JPS::InitializeSearch(MapEnvironment *env, const xyLoc& from, const xyLoc& to, std::vector<xyLoc> &thePath)
 {
 	nodesExpanded = nodesTouched = 0;
@@ -78,6 +94,12 @@ bool JPS::InitializeSearch(MapEnvironment *env, const xyLoc& from, const xyLoc& 
 	return true;
 }
 
+/**
+ * @brief Performs a single step of the JPS search.
+ * Expands the next node, generates successors, and updates the open/closed list.
+ * @param thePath Reference to the path vector to be filled if the goal is found.
+ * @return True if the goal is found or the open list is empty, false otherwise.
+ */
 bool JPS::DoSingleSearchStep(std::vector<xyLoc> &thePath)
 {
 	if (openClosedList.OpenSize() > 0)
@@ -142,6 +164,14 @@ bool JPS::DoSingleSearchStep(std::vector<xyLoc> &thePath)
 	return false;
 }
 
+/**
+ * @brief Computes the full path from 'from' to 'to' using JPS.
+ * Fills 'path' with the resulting sequence of locations.
+ * @param env Pointer to the map environment.
+ * @param from Start location.
+ * @param to Goal location.
+ * @param path Reference to the path vector to be filled.
+ */
 void JPS::GetPath(MapEnvironment *env, const xyLoc &from, const xyLoc &to, std::vector<xyLoc> &path)
 {
 	path.resize(0);
@@ -150,10 +180,23 @@ void JPS::GetPath(MapEnvironment *env, const xyLoc &from, const xyLoc &to, std::
 	{}
 }
 
+/**
+ * @brief Placeholder for direction-based path output (not implemented).
+ * @param env Pointer to the map environment.
+ * @param from Start location.
+ * @param to Goal location.
+ * @param path Reference to the direction path vector to be filled.
+ */
 void JPS::GetPath(MapEnvironment *env, const xyLoc &from, const xyLoc &to, std::vector<tDirection> &path)
 {
 }
 
+/**
+ * @brief Finds all JPS successors for a given state.
+ * Updates the 'successors' vector with valid moves.
+ * @param s The current state with parent direction.
+ * @param goal The goal location.
+ */
 void JPS::GetJPSSuccessors(const xyLocParent &s, const xyLoc &goal)
 {
 	// write this and return g-cost too
@@ -165,23 +208,49 @@ void JPS::GetJPSSuccessors(const xyLocParent &s, const xyLoc &goal)
 	nodesTouched += successors.size();
 }
 
+/**
+ * @brief Checks if the cell at (x, y) is passable (ground terrain).
+ * @param x X coordinate.
+ * @param y Y coordinate.
+ * @return True if the cell is passable, false otherwise.
+ */
 bool JPS::Passable(int x, int y)
 {
 	return env->GetMap()->GetTerrainType(x, y) == kGround;
 }
 
+/**
+ * @brief Marks the cell at (x, y) as a jump point if within bounds.
+ * @param x X coordinate.
+ * @param y Y coordinate.
+ */
 void JPS::SetJumpPoint(int x, int y)
 {
 	if (x >= 0 && x < w && y >= 0 && y < h)
 		jumpPoints[(y+0)*w+(x+0)] = true;
 }
 
+/**
+ * @brief Returns true if the cell at (x, y) is a jump point.
+ * @param x X coordinate.
+ * @param y Y coordinate.
+ * @return True if the cell is a jump point, false otherwise.
+ */
 bool JPS::JumpPoint(int x, int y)
 {
 	return jumpPoints[(y+0)*w+(x+0)];
 }
 
 
+/**
+ * @brief Recursively generates JPS successors from (x, y) in the direction of 'parent'.
+ * Adds valid successors to the 'successors' vector.
+ * @param x X coordinate.
+ * @param y Y coordinate.
+ * @param parent Direction from which the node was reached.
+ * @param goal The goal location.
+ * @param cost The current path cost.
+ */
 void JPS::GetJPSSuccessors(int x, int y, uint8_t parent, const xyLoc &goal, double cost)
 {
 	if (goal.x == x && goal.y == y)
@@ -367,6 +436,12 @@ void JPS::GetJPSSuccessors(int x, int y, uint8_t parent, const xyLoc &goal, doub
 	}
 }
 
+/**
+ * @brief Extracts the path from the goal node back to the start node.
+ * Fills 'thePath' with the sequence of locations.
+ * @param node The node ID to start backtracking from.
+ * @param thePath Reference to the path vector to be filled.
+ */
 void JPS::ExtractPathToStartFromID(uint64_t node, std::vector<xyLoc> &thePath)
 {
 	do {
@@ -376,21 +451,37 @@ void JPS::ExtractPathToStartFromID(uint64_t node, std::vector<xyLoc> &thePath)
 	thePath.push_back(openClosedList.Lookup(node).data.loc);
 }
 
+/**
+ * @brief Returns the number of nodes expanded during the search.
+ * @return Number of nodes expanded.
+ */
 uint64_t JPS::GetNodesExpanded() const
 {
 	return nodesExpanded;
 }
 
+/**
+ * @brief Returns the number of nodes touched during the search.
+ * @return Number of nodes touched.
+ */
 uint64_t JPS::GetNodesTouched() const
 {
 	return nodesTouched;
 }
 
+/**
+ * @brief Logs final statistics to the provided StatCollection (currently empty).
+ * @param stats Pointer to the statistics collection object.
+ */
 void JPS::LogFinalStats(StatCollection *stats)
 {
 	
 }
 
+/**
+ * @brief Generates an SVG string visualizing the search process.
+ * @return SVG string representing the search.
+ */
 std::string JPS::SVGDraw()
 {
 	std::string s;
@@ -451,6 +542,9 @@ std::string JPS::SVGDraw()
 }
 
 
+/**
+ * @brief Draws the search process using OpenGL.
+ */
 void JPS::OpenGLDraw() const
 {
 	double transparency = 1.0;
@@ -503,8 +597,16 @@ void JPS::OpenGLDraw() const
 	}
 }
 
+/**
+ * @brief Overload for OpenGLDraw (not implemented).
+ * @param env Pointer to the map environment.
+ */
 void JPS::OpenGLDraw(const MapEnvironment *env) const {}
 
+/**
+ * @brief Draws the search process using a Graphics::Display object.
+ * @param disp Reference to the display object.
+ */
 void JPS::Draw(Graphics::Display &disp) const
 {
 	double transparency = 1.0;

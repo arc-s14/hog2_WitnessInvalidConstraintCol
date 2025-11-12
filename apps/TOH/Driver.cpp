@@ -8,12 +8,13 @@
 #include "TemplateAStar.h"
 #include "FileUtil.h"
 #include "SVGUtil.h"
-const int numDisks = 16;
+const int numDisks = 12;
 
 void SaveSVG(Graphics::Display &d, int port);
 
 TOH<numDisks> toh;
 TOHState<numDisks> s, g;
+
 
 IDAStar<TOHState<numDisks>, TOHMove> ida;
 std::vector<TOHMove> solution;
@@ -43,8 +44,19 @@ TOHPDB<numDisks-6, numDisks, 6> pdb4(&absToh1, goal);
 
 Heuristic<TOHState<numDisks>> h;
 
+int selectedPeg = -1;
 bool recording = false;
-bool running = true;
+bool animating = false;
+bool dragging = false;
+bool releasing = false;
+float px; // cursor's x-position
+int userMoveCount = 0;
+int optimalMoveCount = 0;
+float userSolveTime = 0;
+float optimalSolveTime = 0;
+std::string str;
+Timer t;
+
 
 int main(int argc, char* argv[])
 {
@@ -62,7 +74,8 @@ void InstallHandlers()
 	InstallKeyboardHandler(MyDisplayHandler, "PDB", "Value-Range Compress PDB", kAnyModifier, 'v');
 	InstallKeyboardHandler(MyDisplayHandler, "Record", "Record a movie", kAnyModifier, 'r');
 	InstallKeyboardHandler(MyDisplayHandler, "Reset View", "Reset camera to initial view", kAnyModifier, '|');
-	InstallKeyboardHandler(MyDisplayHandler, "Reset state", "Choose a new random initial state", kAnyModifier, 's');
+	InstallKeyboardHandler(MyDisplayHandler, "Solve", "Find optimal solution path", kAnyModifier, 's');
+    InstallKeyboardHandler(MyDisplayHandler, "Reset", "Reset the board", kAnyModifier, 'n');
 
 	InstallCommandLineHandler(MyCLHandler, "-run", "-run", "Runs pre-set experiments.");
 	
@@ -73,11 +86,11 @@ void InstallHandlers()
 
 void SolveProblem(bool reset = true)
 {
-	Timer t;
+	
 	if (reset)
 	{
-		s.StandardStart();
-		g.Reset();
+		s.StandardStart(); //the start state
+		g.Reset();         //the solution state
 //		g.counts[2]++;
 //		g.counts[3]--;
 //		g.disks[2][0] = 4;
@@ -123,12 +136,17 @@ void SolveProblem(bool reset = true)
 	t.StartTimer();
 	astar.GetPath(&toh, s, g, solution);
 	t.EndTimer();
+    
+    optimalSolveTime = t.GetElapsedTime();
+    optimalMoveCount = solution.size();
+    
 	for (auto &m : solution)
 	{
 		std::cout << m << " ";
 	}
-	printf("\n[no prune] %1.2fs elapsed; %llu expanded; %llu generated [%lu]\n", t.GetElapsedTime(), astar.GetNodesExpanded(), astar.GetNodesTouched(), solution.size());
-
+    printf("\n[no prune] %1.2fs elapsed; %llu expanded; %llu generated [%lu]\n", optimalSolveTime, astar.GetNodesExpanded(), astar.GetNodesTouched(), optimalMoveCount);
+    
+    
 }
 
 void SpeedTest()
@@ -176,48 +194,104 @@ void MyWindowHandler(unsigned long windowID, tWindowEventType eType)
 		h.heuristics.push_back(&toh);
 		h.lookups.push_back({kLeafNode, 0, 0});
 		s.StandardStart();
-		g.Reset();
+        g.StandardStart();
+        setTextBufferVisibility(false);
 //		SolveProblem(true);
 //		SpeedTest();
 	}
 }
 
-double v = 1;
-uint64_t counter = 0;
-const int animationFrames = 20;
+float v = 0.0;
+const int animationFrames = 15;
 void MyFrameHandler(unsigned long windowID, unsigned int viewport, void *)
 {
 //	cameraMoveTo(0, -1, -12.5, 0.05);
 //	cameraLookAt(0, 0, 0, 0.2);
 	auto &display = GetContext(windowID)->display;
-	display.FillRect({-1, -1, 1, 1}, Colors::black);
-	toh.Draw(display);
+	display.FillRect({-1, -1, 1, 1}, Colors::white); // background
 
-	if (solution.size() != 0 && running)
-	{
-		toh.GetNextState(s, solution[0], g);
-		toh.Draw(display, s);
-		SaveSVG(display, 0);
-//		toh.OpenGLDraw(s, g, float(counter)/animationFrames);
-//		counter = (counter+1)%animationFrames;
-//		if (counter == 0)
-		{
-			toh.ApplyAction(s, solution[0]);
-			solution.erase(solution.begin());
-//			if (solution.size() == 0)
-//				counter = 10;//recording = false;
-		}
-	}
+	toh.Draw(display); // pegs, base
+    toh.Draw(display, str); // text area
+
+   if (animating)
+   { // computer is solving
+       if (v == 0)
+       {
+           s = g;
+           toh.GetNextState(s, solution[0], g); // g is the next state
+           solution.erase(solution.begin());
+       }
+              
+       toh.Draw(display, s, g, v);
+       
+       if (solution.size() == 0 && v >= 1 - 1.0/animationFrames)
+       { // game is solved
+           s = g;
+           animating = false;
+           str = "Optimal solve is "+std::to_string(optimalMoveCount)+" moves in "+std::to_string(optimalSolveTime)+" seconds";
+       }
+   }
+   else if (dragging)
+   { // user is playing, dragging a disk
+        if (v < 0.333) // disk animates up
+        {
+            toh.Draw(display, s, selectedPeg, 0, v); // disk on selectedPeg starts going to peg 0 (it doesn't matter if peg 0 is valid because only the first third of the move is shown)
+        }
+        else {
+            v -= 1.0/animationFrames; // to offset v += 1.0/animationFrames, so the end result is v doesn't change
+            g = s;
+            toh.Draw(display, s, selectedPeg, px);
+        }
+        
+   }
+   else if (releasing)
+   { // user is playing, releasing a disk
+        int nextPeg = toh.GetHoveredPeg(px);
+        toh.Draw(display, s, selectedPeg, nextPeg, v);
+        
+       if (v >= 1 - 1.0/animationFrames) // once we're all the way through v, reset everything
+       {
+            releasing = false;
+            s = g; // the old next state is now the current state
+            selectedPeg = -1;
+           
+           if (userSolveTime == 1)
+           {
+               t.EndTimer();
+               userSolveTime = t.GetElapsedTime();
+           }
+               
+           if (userSolveTime == 0)
+           {
+               t.StartTimer();
+               userSolveTime++; // to prevent the timer from restarting
+           }
+           if (s.GetDiskCountOnPeg(3) == numDisks)
+           { // game is solved
+               t.EndTimer();
+               userSolveTime = t.GetElapsedTime();
+               userSolveTime = std::round(userSolveTime*10);
+               int timeDec = static_cast<int>(userSolveTime) % 10; // tenth place digit of userSolveTime rounded to the nearest tenth
+               int timeInt = (static_cast<int>(userSolveTime) - timeDec) / 10; // integer part of userSolveTime
+               
+               str = "Congrats! You solved with "+std::to_string(userMoveCount)+" moves in "+std::to_string(timeInt)+"."+std::to_string(timeDec)+" seconds";
+           }
+           else {
+               str = "moves taken: "+std::to_string(userMoveCount);
+           }
+        }
+    }
 	else {
-//		if (solution.size() == 0)
-//		{
-//			counter--;
-//			if (counter == 0)
-//				recording = false;
-//		}
 		toh.Draw(display, s);
 	}
 	
+
+    v += 1.0/animationFrames;
+    
+    if (v >= 1)
+        v = 0;
+    
+    
 	if (recording && viewport == GetNumPorts(windowID)-1)
 	{
 //		static int cnt = 0;
@@ -244,17 +318,22 @@ void MyDisplayHandler(unsigned long windowID, tKeyboardModifier mod, char key)
 		case 'r': recording = !recording; break;
 		case 's':
 		{
-			//toh.GetStateFromHash(random()%toh.GetNumStates(s), s);
-//			g.Reset();
 			SolveProblem(true);
-//			ida.GetPath(&toh, s, g, solution);
-//			for (auto &m : solution)
-//			{
-//				std::cout << m << " ";
-//			}
-//			std::cout << "\n";
+            g = s;
+            v = 0;
+            str = "";
+            animating = true;
 		}
 			break;
+        case 'n':
+            s.StandardStart();
+            g.StandardStart();
+            userMoveCount = 0;
+            userSolveTime = 0;
+            animating = false;
+            releasing = false;
+            str = "";
+            break;
 		case 'v': // value range compression
 		{
 			goal.Reset();
@@ -375,11 +454,35 @@ Heuristic<TOHState<numDisks>> *BuildPDB(const TOHState<numDisks> &goal)
 	return h;
 }
 
-bool MyClickHandler(unsigned long , int, int, point3d , tButtonType , tMouseEventType )
+bool MyClickHandler(unsigned long , int, int, point3d p, tButtonType , tMouseEventType e)
 {
-	return false;
+    if (animating)
+        return true;
+    if (s.GetDiskCountOnPeg(3) == numDisks) // stops letting the user move disks after the game has been solved
+        return true;
+    
+    if (e == kMouseDown)
+    {
+        v = 0;
+        releasing = false;
+        s = g;
+        toh.Click(selectedPeg, p.x);
+    }
+    else if (e == kMouseDrag)
+    {
+        px = p.x;
+        dragging = toh.Drag(s, selectedPeg);
+    }
+    else if (e == kMouseUp)
+    {
+        dragging = false;
+        releasing = toh.Release(s, selectedPeg, p, g, userMoveCount);
+        
+        v = 0.667;
+    }
+    
+	return true;
 }
-
 
 void SaveSVG(Graphics::Display &d, int port)
 {
