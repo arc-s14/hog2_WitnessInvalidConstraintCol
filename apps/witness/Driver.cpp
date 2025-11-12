@@ -20,6 +20,10 @@
 #include "SVGUtil.h"
 #include <thread>
 #include <mutex>
+//#include "WitnessInferenceRule.h"
+#include "../../papers/TheWitnessEditor/include/WitnessInferenceRule.h"
+
+
 std::mutex lock;
 
 bool recording = false;
@@ -60,8 +64,42 @@ void GenerateUnique44();
 template <int puzzleWidth, int puzzleHeight>
 void GetAllSolutions(const Witness<puzzleWidth, puzzleHeight> &w, std::vector<WitnessState<puzzleWidth, puzzleHeight>> &puzzles);
 
+
+
+// global stuff
+int RULE_ROW = 6; // make this dynamic
+int TruthTable_COL = 10;
+int MOVE_COL = kWitnessActionCount;
+int RULE_COL = 4; //violation, correct move, percentage based on occurence or something- so 3 cols //+1 for perc of skill
+
+// working vectors
+std::vector < std::vector <std::string>> MoveTable (RULE_ROW, std::vector<std::string>(MOVE_COL,".")); // shows the must_cross & cant_cross info for rules
+std::vector < std::vector <float>> UpdateTable (RULE_ROW, std::vector<float>(TruthTable_COL, 0));
+std::vector < std::vector <int>> RuleTable (RULE_ROW, std::vector<int>(RULE_COL,0));
+
+int whichPuzzle = 0; // variable we'll use to increment the puzzle
+int puzzleNum = 8; // fix at 8 if we have 8 puzzles
+bool redrawBackground = true; // this too?
+
+std::vector<std::vector<Witness<4,4>>> puzzleSet; // set of puzzles to iterate through
+Witness<4, 4> tmp44w;
+Witness<4, 4> kPuzzle;
+std::vector<WitnessState<4, 4>> kAllSolutions;
+std::vector<SolutionTreeNode> solutionTree;
+
+
+
+// for the kInsideSolutionTreeRule
+static void Init() 
+{
+    GetAllSolutions(kPuzzle, kAllSolutions);
+    BuildTree(kPuzzle, kAllSolutions, solutionTree);
+}
+
+
 int main(int argc, char* argv[])
 {
+	Init(); // for the kInsideSolutionTreeRule
 //	GetAllSolutions();
 	InstallHandlers();
 	RunHOGGUI(argc, argv, 640, 640);
@@ -1221,7 +1259,137 @@ void DrawPaperLevel(int which)
 
 }
 
-void MyWindowHandler(unsigned long windowID, tWindowEventType eType)
+
+void PrintTable(const std::vector<std::vector<std::string>>& table, 
+                Graphics::Display &d, 
+                const Graphics::point& startPoint, 
+                double fontSize, 
+                double cellWidth, 
+                double cellHeight,
+				double timer,
+				int T_row,
+				int T_col,
+				const std::vector<int>& possibleDirs,
+				int cX, int cY, 
+				bool table_calc_toggle) 
+{
+
+	/*
+		// not used/ removed
+		double timer,
+		int T_row,
+		int T_col,
+		const std::vector<int>& possibleDirs,
+		int cX, int cY, 
+		bool table_calc_toggle
+	*/
+    //start here
+	double x = startPoint.x;
+	double y = startPoint.y;
+
+	//col headers (printed LAST)
+	const std::vector<std::string> colHeaders = {"Up 0", "Dw 1", "Lt 2", "Rt 3", "St 4", "Ed 5"};
+
+
+	std::vector<int> activeRows; // for the probalility table
+
+	rgbColor rule_color = Colors::black; 
+
+	//rows from bottom to top
+	if (table.empty()) return;
+
+
+	for (int row = table.size() - 1; row >= 0; --row) 
+	{ 
+		double cellY = y - ((table.size() - row) * cellHeight); // rev row order
+
+		for (int col = -1; col < static_cast<int>(table[0].size()); ++col) 
+		{ 
+			double cellX = x + (col + 1) * cellWidth; // odfset for row headers
+			if (row == 1)
+				continue; // skip the kPathConstraintRule
+
+			if (col == -1) 
+			{
+				if (row%2 == 0)
+					rule_color = Colors::darkpurple;
+				else
+					rule_color = Colors::darkred;
+				//rules
+				d.DrawText(GetRuleNameByID(row).c_str(), {static_cast<float>(x), static_cast<float>(cellY)}, rule_color, fontSize, 0);
+			} 
+			else 
+			{
+				rule_color = Colors::black; 
+
+				float shift_icons = fontSize / 8;
+				//vals
+				if ( (table[row][col]) == "M" )
+				{
+					//shift neg cus that's how the grid works
+					d.FillCircle({static_cast<float>(cellX+shift_icons+shift_icons), 
+						static_cast<float>(cellY-shift_icons)}, fontSize/1.5, Colors::green); 
+					
+					if (std::find(activeRows.begin(), activeRows.end(), row) == activeRows.end()) 
+						activeRows.push_back(row);
+				}
+				else if ( (table[row][col]) == "C" )
+				{
+					//normal case
+					{
+						d.FillSquare({static_cast<float>(cellX+shift_icons+shift_icons), 
+							static_cast<float>(cellY-shift_icons)}, fontSize/1.5, Colors::red);
+
+						if (std::find(activeRows.begin(), activeRows.end(), row) == activeRows.end()) 
+							activeRows.push_back(row);
+					}
+				}
+				else 
+				{
+					d.DrawText((table[row][col]).c_str(), {static_cast<float>(cellX+shift_icons), static_cast<float>(cellY)}, rule_color, fontSize, 0);
+				}
+			}
+		}
+		
+		// del
+		// update active rows for truth table
+		// std::cout << "\n\t Active rows: "<<activeRows.size() << " t: " << TruthTable_COL;
+		// TruthTable_COL = activeRows.size();
+
+
+	}
+
+	//print col headers (LAST, so they appear on top)
+	double headerY = y - ((table.size() + 1) * cellHeight); //slightly above the first row
+	for (int col = 0; col < static_cast<int>(table[0].size()); ++col) {
+		double cellX = x + (col + 1) * cellWidth; //offset row headers
+		d.DrawText(colHeaders[col].c_str(), {static_cast<float>(cellX), static_cast<float>(headerY)}, Colors::darkblue, fontSize, 0);
+	}
+
+	//if(table_calc_toggle)
+		//TruthTable(table, d, startPoint, timer, possibleDirs, activeRows, cX, cY);
+
+
+
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+void old_MyWindowHandler(unsigned long windowID, tWindowEventType eType)
 {
 	if (eType == kWindowDestroyed)
 	{
@@ -1312,14 +1480,301 @@ void MyWindowHandler(unsigned long windowID, tWindowEventType eType)
 	}
 }
 
+void MySecondFrameHandler(unsigned long windowID, unsigned int viewport, void*);
 
-void MyFrameHandler(unsigned long windowID, unsigned int viewport, void *)
+
+void MyWindowHandler(unsigned long windowID, tWindowEventType eType)
 {
+	if (eType == kWindowDestroyed)
+	{
+		printf("Window %ld destroyed\n", windowID);
+		RemoveFrameHandler(MyFrameHandler, windowID, 0);
+		RemoveFrameHandler(MySecondFrameHandler, windowID, nullptr);
+	}
+	else if (eType == kWindowCreated)
+	{
+//		for (int x = 0; x < 50; x++)
+//			DrawPaperLevel(x);
+
+		printf("Window %ld created\n", windowID);
+		InstallFrameHandler(MyFrameHandler, windowID, 0);
+		SetNumPorts(windowID, 2); //comment
+		ReinitViewports(windowID, {-1, -1, 0,1}, kScaleToSquare);
+//		if(vp_active == true)
+//		{
+
+			AddViewport(windowID, {0, -1, 1, 1}, kScaleToSquare);
+			InstallFrameHandler(MySecondFrameHandler, windowID, nullptr);
+//		}
+
+		puzzleSet.resize(puzzleNum); // 4 puzzles for now // Jul20
+
+		char buffer[10]; // or bigger if needed
+		sprintf(buffer, " Puzzle-%d", whichPuzzle+1);
+		submitTextToBuffer(buffer); // add the submit text to buffer part ?? //comments
+
+		// puzzle 1
+		tmp44w.ClearSeparationConstraints();
+		
+		tmp44w.AddSeparationConstraint(0, 1, Colors::black);
+		tmp44w.AddSeparationConstraint(2, 1, Colors::bluegreen);
+
+		puzzleSet[0].push_back(tmp44w);
+
+		// puzzle 2
+		tmp44w.ClearSeparationConstraints();
+
+		tmp44w.AddSeparationConstraint(2, 1, Colors::yellow);
+		tmp44w.AddSeparationConstraint(2, 2, Colors::pink);
+
+		tmp44w.AddSeparationConstraint(1, 1, Colors::yellow);
+		tmp44w.AddSeparationConstraint(1, 2, Colors::pink); 
+
+		puzzleSet[1].push_back(tmp44w);
+
+		// puzzle 3
+		tmp44w.ClearSeparationConstraints();
+
+		tmp44w.AddSeparationConstraint(2, 1, Colors::green);
+		tmp44w.AddSeparationConstraint(1, 1, Colors::pink);
+		tmp44w.AddSeparationConstraint(1, 2, Colors::green); 
+
+		puzzleSet[2].push_back(tmp44w);
+
+		
+
+		// puzzle 4
+		tmp44w.ClearSeparationConstraints();
+		tmp44w.AddSeparationConstraint(0, 3, Colors::bluegreen);
+		tmp44w.AddSeparationConstraint(1, 1, Colors::magenta);
+		tmp44w.AddSeparationConstraint(1, 2, Colors::magenta);
+		puzzleSet[3].push_back(tmp44w);
+
+
+		// puzzle 5
+		tmp44w.ClearSeparationConstraints();
+		tmp44w.AddSeparationConstraint(0, 3, Colors::black);
+
+
+		tmp44w.AddSeparationConstraint(1, 0, Colors::orange);
+		tmp44w.AddSeparationConstraint(3, 0, Colors::orange);
+		
+		tmp44w.AddSeparationConstraint(2, 2, Colors::purple);
+
+		puzzleSet[4].push_back(tmp44w);
+
+
+
+		// puzzle 6
+		tmp44w.ClearSeparationConstraints();
+		tmp44w.AddSeparationConstraint(0, 3, Colors::bluegreen);
+
+
+		tmp44w.AddSeparationConstraint(0, 2, Colors::pink);
+		tmp44w.AddSeparationConstraint(1, 3, Colors::pink);
+		
+		tmp44w.AddSeparationConstraint(3, 0, Colors::bluegreen);
+
+		puzzleSet[5].push_back(tmp44w);
+
+		// puzzle 7
+		tmp44w.ClearSeparationConstraints();
+		tmp44w.AddSeparationConstraint(0, 1, Colors::green);
+		tmp44w.AddSeparationConstraint(3, 1, Colors::green);
+		tmp44w.AddSeparationConstraint(1, 0, Colors::green);
+		tmp44w.AddSeparationConstraint(2, 0, Colors::green);
+		tmp44w.AddSeparationConstraint(1, 2, Colors::green);
+		tmp44w.AddSeparationConstraint(1, 3, Colors::green);
+
+		tmp44w.AddSeparationConstraint(1, 1, Colors::pink);
+		tmp44w.AddSeparationConstraint(2, 1, Colors::pink);
+		tmp44w.AddSeparationConstraint(2, 2, Colors::pink);
+		tmp44w.AddSeparationConstraint(2, 3, Colors::pink);
+
+		puzzleSet[6].push_back(tmp44w);
+
+
+		// puzzle 8
+		tmp44w.ClearSeparationConstraints();
+		tmp44w.AddSeparationConstraint(0, 0, Colors::bluegreen);
+		tmp44w.AddSeparationConstraint(0, 2, Colors::bluegreen);
+
+		tmp44w.AddSeparationConstraint(0, 1, Colors::pink);
+		tmp44w.AddSeparationConstraint(1, 0, Colors::pink);
+		
+		tmp44w.AddSeparationConstraint(2, 3, Colors::orange);
+		tmp44w.AddSeparationConstraint(3, 2, Colors::orange);
+
+		tmp44w.AddSeparationConstraint(3, 1, Colors::bluegreen);
+		tmp44w.AddSeparationConstraint(3, 3, Colors::bluegreen);
+
+		puzzleSet[7].push_back(tmp44w);
+
+
+		tmp44w.ClearSeparationConstraints();
+
+
+	}
+}
+
+
+void old_MyFrameHandler(unsigned long windowID, unsigned int viewport, void *)
+{
+	if(viewport != 0)
+		return;
 	Graphics::Display &d = GetContext(windowID)->display;
 	iws.IncrementTime();
 	w.Draw(d);
 	w.Draw(d, iws);
 }
+
+
+void MyFrameHandler(unsigned long windowID, unsigned int viewport, void *)
+{
+	if (whichPuzzle < puzzleNum) // avoid going out of bounds 
+		w = puzzleSet[whichPuzzle][0]; // always update w based on whichPuzzle
+
+	if(viewport != 0)
+		return;
+	
+	Graphics::Display &display = getCurrentContext()->display;
+	if (whichPuzzle < puzzleNum) // for four puzzles as we go from 0 to 3
+	{	
+		if (viewport == 0)
+			iws.IncrementTime();
+		if (redrawBackground)
+		{
+			display.StartBackground();
+			//w = puzzleSet[whichPuzzle][0];
+			w.Draw(display); // viewport is 0
+			display.EndBackground();
+		}
+		w.Draw(display, iws);
+	}
+	else if (whichPuzzle == puzzleNum)
+	{
+		if (redrawBackground)
+		{
+			display.StartBackground();
+			display.FillRect({-1.0f, -1.0f, 1.0f, 1.0f}, Colors::white);
+			display.EndBackground();
+		}
+		display.DrawText("Puzzles Completed!", {0.0f, 0.0f}, Colors::pink, 0.1f, Graphics::textAlignCenter);
+	}
+	//if (viewport == 1) // for the table info viewport
+	//	redrawBackground = false; // comments use this too
+}
+
+
+
+
+
+
+void MySecondFrameHandler(unsigned long windowID, unsigned int viewport, void *)
+{
+	if(viewport != 1)
+		return;
+
+	Graphics::Display &disp = GetContext(windowID)->display;	
+	disp.FillRect({-1, -1, 1, 1}, Colors::white);
+
+	WitnessState<puzzleWidth, puzzleHeight> currentState = iws.ws;
+
+	std::vector<WitnessAction> actions; //possble acts not taken or IR related acts (i.e., must_take, cant_take)
+	//tmp44w.GetActions(currentState, actions);
+	w.GetActions(currentState, actions);
+
+
+	std::vector<int> possibleDirs;
+	for (const auto& action : actions) {
+		possibleDirs.push_back(static_cast<int>(action));
+	}
+
+	// to draw moves table
+	int RULE_ROW = witIRs<puzzleWidth, puzzleHeight>.size(); //comment //dynamic rows 
+
+	int frame_currX = -1, frame_currY = -1;
+
+	if (!iws.ws.path.empty()) {
+		std::tie(frame_currX, frame_currY) = iws.ws.path.back();  // or use std::pair directly
+	}
+
+
+	bool table_calc = false;
+	if(iws.currState == iws.kInPoint)
+		table_calc = true;
+
+	PrintTable(MoveTable, disp, -0.75, 0.05f, 0.2f, 0.1f, 7, RULE_ROW, MOVE_COL, possibleDirs, frame_currX, frame_currY, table_calc);
+
+	// setting up the priors (i'm using prior and posterior interchangeably)
+	std::vector<int> activeRules = {0, 1, 2, 3, 4, 5}; // hardcoded for 6 rules // changed to index
+
+	
+	//working with rules
+	//apply IRs and log results
+	std::unordered_map<WitnessAction, ActionType> filteredLogics;
+	std::vector<std::string> resultLog;
+
+	auto& inferenceRules = witIRs<puzzleWidth, puzzleHeight>;
+	// bfr update / rule evaluation block
+	std::vector<std::vector<std::string>> MoveTable(
+		RULE_ROW, std::vector<std::string>(MOVE_COL, ".")
+	);
+
+
+	for (const auto& action : actions) 
+	{
+		ActionType overallResult = UNKNOWN;
+
+		for (const auto& [ruleID, ruleFunction] : witIRs<puzzleWidth, puzzleHeight>) 
+		{
+			ActionType result = ruleFunction(w, iws.ws, action);
+			if (result == MUST_TAKE) 
+			{
+
+				// build string log
+				//std::stringstream ss;
+				//ss << "ruleID: " << ruleID 
+				//<< " | ruleFunction: " << reinterpret_cast<void*>(ruleFunction) // pointer address as identifier
+				//<< " | action: " << static_cast<int>(action)
+				//<< " | result: " << "MUST_TAKE";
+
+				int actionValue = static_cast<int>(action);
+				//std::cout<<"rID: "<<ruleID<<" , actVal: "<<actionValue;
+				MoveTable[ruleID][actionValue] = "M"; //this is showing M so we can log- curr pos AND rule broken here //ideas//working
+				//RuleTable[ruleID][0] += 1; // this is tracking count, not violation or occurence
+
+				bool table_calc = false;
+				if(iws.currState == iws.kInPoint)
+					table_calc = true;
+
+				PrintTable(MoveTable, disp, -0.75, 0.05f, 0.2f, 0.1f, 7, RULE_ROW, MOVE_COL, possibleDirs, frame_currX, frame_currY, table_calc);
+				//PrintDoubleTable(rules_p, disp, {static_cast<float>(-0.75), static_cast<float>(0.5)}, 0.05f, 0.2f, 0.1f);
+			} 
+			else if (result == CANNOT_TAKE) 
+			{
+				// build string log
+				std::stringstream ss;
+				ss << "ruleID: " << ruleID 
+				//<< " | ruleFunction: " << reinterpret_cast<void*>(ruleFunction) // pointer address as identifier
+				<< " | action: " << static_cast<int>(action)
+				<< " | result: " << "CANT_TAKE";
+
+				int actionValue = static_cast<int>(action);
+				//normal case
+				MoveTable[ruleID][actionValue] = "C"; 
+				
+				bool table_calc = false;
+				if(iws.currState == iws.kInPoint)
+					table_calc = true;
+				
+				PrintTable(MoveTable, disp, -0.75, 0.05f, 0.2f, 0.1f, 7, RULE_ROW, MOVE_COL, possibleDirs, frame_currX, frame_currY, table_calc);
+			}
+		}
+	}
+}
+
+
 
 int MyCLHandler(char *argument[], int maxNumArgs)
 {
@@ -1437,7 +1892,7 @@ void MyDisplayHandler(unsigned long windowID, tKeyboardModifier mod, char key)
 	}
 }
 
-bool MyClickHandler(unsigned long, int, int, point3d p, tButtonType , tMouseEventType e)
+bool oldMyClickHandler(unsigned long, int, int, point3d p, tButtonType , tMouseEventType e)
 {
 	if (e == kMouseDrag) // ignore movement with mouse button down
 		return true;
@@ -1449,6 +1904,8 @@ bool MyClickHandler(unsigned long, int, int, point3d p, tButtonType , tMouseEven
 			if (w.GoalTest(iws.ws))
 			{
 				printf("Solved!\n");
+
+				redrawBackground = true;
 			}
 			else {
 				printf("Invalid solution\n");
@@ -1466,6 +1923,83 @@ bool MyClickHandler(unsigned long, int, int, point3d p, tButtonType , tMouseEven
 	// Don't need any other mouse support
 	return true;
 }
+
+
+bool MyClickHandler(unsigned long, int, int, point3d p, tButtonType, tMouseEventType e)
+{
+    // persistent variables
+    //static int prev_path_size = 0; // persists between calls
+    //int currX = 0, currY = 0;
+    //int prevX = 0, prevY = 0;
+
+    // Ignore dragging
+    if (e == kMouseDrag) 
+        return true;
+
+    // Mouse button released
+    if (e == kMouseUp)
+    {
+        if (whichPuzzle < puzzleNum && !puzzleSet[whichPuzzle].empty())
+        {
+            auto& w = puzzleSet[whichPuzzle][0]; // use reference to avoid slicing
+            if (w.Click(p, iws))
+            {
+                // Check if solution is correct
+                if (w.GoalTestWithTracking(iws.ws))
+                {
+                    printf("\nSolved!");
+                    std::cout << "\t[Sol] P-" << whichPuzzle + 1 << "\n";
+
+                    whichPuzzle++;
+
+                    char buffer[32];
+                    if (whichPuzzle != puzzleNum)
+                        sprintf(buffer, " Puzzle-%d", whichPuzzle + 1);
+                    else if (whichPuzzle == puzzleNum)
+                        sprintf(buffer, "\0"); // show nothing on completion
+						
+
+                    submitTextToBuffer(buffer);
+
+                    // reset puzzle state 
+                    redrawBackground = true;
+                    iws.Reset();
+                }
+                else
+                {
+                    printf("\n\tInvalid solution");
+                    std::cout << "\t[Inv] P-" << whichPuzzle + 1 << "\n";
+
+                    iws.Reset(); // reset on failure
+                }
+            }
+        }
+    }
+
+    // Mouse moved without button pressed
+    if (e == kMouseMove)
+    {
+        if (whichPuzzle < puzzleNum && !puzzleSet[whichPuzzle].empty())
+        {
+            auto& w = puzzleSet[whichPuzzle][0];
+            w.Move(p, iws); // move in current viewport
+        }
+
+        // Example of direction logging logic
+        bool shouldLog = false;
+        int dir_taken = -1;
+
+        // Update prev path size if needed
+        // prev_path_size = ... (your path tracking logic here)
+    }
+
+    return true;
+}
+
+
+
+
+
 
 
 template <int puzzleWidth, int puzzleHeight>
