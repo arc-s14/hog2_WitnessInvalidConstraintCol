@@ -23,6 +23,7 @@
 
 #include "SearchEnvironment.h"
 #include "vectorCache.h"
+// #include "../apps/witness/testWitBaye.h"
 
 template<int width, int height>
 int GetEdgeHash(bool horizontal, int x, int y)
@@ -213,6 +214,9 @@ enum WitnessAction {
     kEnd,
     kWitnessActionCount
 };
+
+#include "../apps/witness/testWitBaye.h" // for witnessMoveQueue to keep track of updates
+
 
 inline std::ostream& operator<<(std::ostream &os, const WitnessAction &action)
 {
@@ -4033,10 +4037,20 @@ void Witness<width, height>::Move(Graphics::point mouseLoc, InteractiveWitnessSt
                 }
             }
 
+
             // 2. Add to target location
             iws.target = iws.ws.path.back();
+
+            std::cout << "\n\tApplying action " << a << " from " << iws.target.first << ", " << iws.target.second;
+            std::pair<int, int> before = iws.target;  // position before applying
             ApplyAction(iws.target, a);
+            std::pair<int, int> after = iws.target;
+            witnessMoveQueue.push({before, after, a});
+
             iws.targetAct = a;
+
+
+            std::cout << "\n\tTarget set to " << iws.target.first << ", " << iws.target.second << " act: " << a << "\n";
 
             // 3. Change state
             // printf("Switched from kInPoint to kBetweenPoints\n");

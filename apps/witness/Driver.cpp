@@ -22,6 +22,10 @@
 #include <mutex>
 //#include "WitnessInferenceRule.h"
 #include "../../papers/TheWitnessEditor/include/WitnessInferenceRule.h"
+#include "testWitBaye.h"
+#include <set>
+#include <utility>  // for std::pair
+
 
 
 std::mutex lock;
@@ -1721,6 +1725,18 @@ void MySecondFrameHandler(unsigned long windowID, unsigned int viewport, void *)
 		RULE_ROW, std::vector<std::string>(MOVE_COL, ".")
 	);
 
+	//oct21
+	// static variables to persist across frames
+	static std::pair<int,int> lastNode{-1,-1};
+	static std::set<std::pair<int,int>> loggedRules; // ruleID, actionValue
+
+	// check if player moved
+	if (std::make_pair(frame_currX, frame_currY) != lastNode) {
+		lastNode = {frame_currX, frame_currY};
+		loggedRules.clear(); // clear previous node logs
+	}
+
+	//
 
 	for (const auto& action : actions) 
 	{
@@ -1728,50 +1744,92 @@ void MySecondFrameHandler(unsigned long windowID, unsigned int viewport, void *)
 
 		for (const auto& [ruleID, ruleFunction] : witIRs<puzzleWidth, puzzleHeight>) 
 		{
+			
 			ActionType result = ruleFunction(w, iws.ws, action);
+
+			
+
 			if (result == MUST_TAKE) 
 			{
 
-				// build string log
-				//std::stringstream ss;
-				//ss << "ruleID: " << ruleID 
-				//<< " | ruleFunction: " << reinterpret_cast<void*>(ruleFunction) // pointer address as identifier
-				//<< " | action: " << static_cast<int>(action)
-				//<< " | result: " << "MUST_TAKE";
-
 				int actionValue = static_cast<int>(action);
-				//std::cout<<"rID: "<<ruleID<<" , actVal: "<<actionValue;
-				MoveTable[ruleID][actionValue] = "M"; //this is showing M so we can log- curr pos AND rule broken here //ideas//working
-				//RuleTable[ruleID][0] += 1; // this is tracking count, not violation or occurence
 
-				bool table_calc = false;
-				if(iws.currState == iws.kInPoint)
-					table_calc = true;
+				if (loggedRules.count({ruleID, actionValue}) == 0)
+				{
+					loggedRules.insert({ruleID, actionValue});
 
+					// build string log
+					std::stringstream ss;
+					ss << "\nruleID: " << ruleID 
+					//<< " | ruleFunction: " << reinterpret_cast<void*>(ruleFunction) // pointer address as identifier
+					<< " | action: " << action
+					<< " | result: " << "MUST_TAKE";
+					std::cout << ss.str();
+				}
+					//std::cout<<"rID: "<<ruleID<<" , actVal: "<<actionValue;
+					MoveTable[ruleID][actionValue] = "M"; //this is showing M so we can log- curr pos AND rule broken here //ideas//working
+					//RuleTable[ruleID][0] += 1; // this is tracking count, not violation or occurence
+
+					bool table_calc = false;
+					if(iws.currState == iws.kInPoint)
+						table_calc = true;
+					
+					//PrintDoubleTable(rules_p, disp, {static_cast<float>(-0.75), static_cast<float>(0.5)}, 0.05f, 0.2f, 0.1f);
+					
+				
 				PrintTable(MoveTable, disp, -0.75, 0.05f, 0.2f, 0.1f, 7, RULE_ROW, MOVE_COL, possibleDirs, frame_currX, frame_currY, table_calc);
-				//PrintDoubleTable(rules_p, disp, {static_cast<float>(-0.75), static_cast<float>(0.5)}, 0.05f, 0.2f, 0.1f);
+
 			} 
 			else if (result == CANNOT_TAKE) 
 			{
-				// build string log
-				std::stringstream ss;
-				ss << "ruleID: " << ruleID 
-				//<< " | ruleFunction: " << reinterpret_cast<void*>(ruleFunction) // pointer address as identifier
-				<< " | action: " << static_cast<int>(action)
-				<< " | result: " << "CANT_TAKE";
-
 				int actionValue = static_cast<int>(action);
-				//normal case
-				MoveTable[ruleID][actionValue] = "C"; 
-				
-				bool table_calc = false;
-				if(iws.currState == iws.kInPoint)
-					table_calc = true;
+				if (loggedRules.count({ruleID, actionValue}) == 0)
+					{
+						loggedRules.insert({ruleID, actionValue});
+						// build string log
+						std::stringstream ss;
+						ss << "\nruleID: " << ruleID 
+						<< " | action: " << action
+						<< " | result: " << "CANT_TAKE";
+						std::cout << ss.str();
+					}
+					//normal case
+					MoveTable[ruleID][actionValue] = "C"; 
+					
+					bool table_calc = false;
+					if(iws.currState == iws.kInPoint)
+						table_calc = true;
+					
 				
 				PrintTable(MoveTable, disp, -0.75, 0.05f, 0.2f, 0.1f, 7, RULE_ROW, MOVE_COL, possibleDirs, frame_currX, frame_currY, table_calc);
+
 			}
+
+
+			
 		}
+	}			
+
+
+
+	// process all new moves that Witness.h captured
+	while (!witnessMoveQueue.empty()) 
+	{
+		WitnessMove move = witnessMoveQueue.front();
+		witnessMoveQueue.pop(); // remove as we process
+
+		std::cout << "\n\ncaptured move: (" 
+				<< move.posBefore.first << "," << move.posBefore.second 
+				<< ") to (" << move.posAfter.first << "," << move.posAfter.second 
+				<< ") action: " << move.action << std::endl;
+
+		// add mathe here
 	}
+
+
+
+
+
 }
 
 
