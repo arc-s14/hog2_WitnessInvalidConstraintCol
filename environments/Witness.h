@@ -24,6 +24,38 @@
 #include "SearchEnvironment.h"
 #include "vectorCache.h"
 // #include "../apps/witness/testWitBaye.h"
+//extern std::vector<std::vector<double>> ruleUpdates; // global // uncomment
+
+
+inline void PrintRuleUpdates() {
+    
+
+    std::cout << "\n[Witness.h] Rule Updates Table:\n\tUp\tDw\tLt\tRt\tSt\tEd\n";
+
+    
+// uncomment
+    // for (size_t r = 0; r < ruleUpdates.size(); ++r) {
+    //     std::cout << "rl" << r << ":";
+    //     for (size_t d = 0; d < ruleUpdates[r].size(); ++d)
+    //     {
+    //         if (ruleUpdates[r][d] != 0.0 && ruleUpdates[r][d] != -1.0)
+    //             std::cout << "\t" << std::fixed << std::setprecision(4) << ruleUpdates[r][d];
+    //         else
+    //             std::cout << "\t" << std::fixed << "_";
+
+            
+    //     }
+    //     std::cout << "\n";
+
+    // }
+
+    //  TO DO: RESET AFTER WE LEAVE THE NODE/ REACH A NEW ONE
+    // CHECKING 21.2
+
+
+}
+
+
 
 template<int width, int height>
 int GetEdgeHash(bool horizontal, int x, int y)
@@ -3996,6 +4028,14 @@ bool Witness<width, height>::Click(Graphics::point mouseLoc, InteractiveWitnessS
     return false;
 }
 
+
+
+
+// global tracking nodes
+std::pair<int,int> prevNode{-1,-1};
+std::pair<int,int> currNode{-1,-1};
+std::array<std::array<double,7>,6> pendingRuleUpdates; // same dimensions as ruleUpdates
+
 template<int width, int height>
 void Witness<width, height>::Move(Graphics::point mouseLoc, InteractiveWitnessState<width, height> &iws)
 {
@@ -4005,8 +4045,46 @@ void Witness<width, height>::Move(Graphics::point mouseLoc, InteractiveWitnessSt
         return;
     }
 
+
+
+
+
+
+    //oct21
+
+
+    //static std::pair<int,int> prevNode = {-1, -1};
+    //static std::pair<int,int> currNode = {-1, -1};
+
+
     if (iws.currState == InteractiveWitnessState<width, height>::kInPoint)
     {
+
+/*
+        // apply pending updates only when I reach a new node - MAIN issue here 
+        // i'm still seeing premature updates
+    for (int ruleID = 0; ruleID < 6; ++ruleID)
+    {
+        for (int dir = 0; dir < 6; ++dir)
+        {
+            if (pendingRuleUpdates[ruleID][dir] > 0.0)
+            {
+                array_priors[ruleID] = pendingRuleUpdates[ruleID][dir];
+                std::cout << "\n\tCommitted PriR[" << ruleID << "] = "
+                          << array_priors[ruleID] << " at new node\n";
+                pendingRuleUpdates[ruleID][dir] = 0.0;
+            }
+        }
+    }
+
+    // Clear pending updates for next move
+    for (auto& inner : pendingRuleUpdates)
+        std::fill(inner.begin(), inner.end(), 0.0);
+*/
+
+        Graphics::point nextTarget = GetScreenCoord(iws.target.first, iws.target.second);
+
+
         Graphics::point end = GetScreenCoord(iws.ws.path.back().first, iws.ws.path.back().second);
 
         float factor = 3;
@@ -4023,6 +4101,14 @@ void Witness<width, height>::Move(Graphics::point mouseLoc, InteractiveWitnessSt
             iws.target = iws.ws.path.back();
             WitnessAction a = moves[0];
             float dist = 1000;
+
+
+            std::cout << "\n---------------------------------\n";
+            std::cout << "\n\t[not logged] Witness.h moves: ";
+
+            static int count_toggle_TT = 0; // show Truth Table only once
+
+
             for (auto m: moves)
             {
                 iws.target = iws.ws.path.back();
@@ -4034,47 +4120,227 @@ void Witness<width, height>::Move(Graphics::point mouseLoc, InteractiveWitnessSt
                 {
                     dist = (mouseLoc - p).length();
                     a = m;
+
+					nextTarget = p;
                 }
-            }
+            }			
 
-
-            // 2. Add to target location
-            iws.target = iws.ws.path.back();
-
-            std::cout << "\n\tApplying action " << a << " from " << iws.target.first << ", " << iws.target.second;
-            std::pair<int, int> before = iws.target;  // position before applying
-            ApplyAction(iws.target, a);
-            std::pair<int, int> after = iws.target;
-            witnessMoveQueue.push({before, after, a});
-
-            iws.targetAct = a;
-
-
-            std::cout << "\n\tTarget set to " << iws.target.first << ", " << iws.target.second << " act: " << a << "\n";
-
-            // 3. Change state
-            // printf("Switched from kInPoint to kBetweenPoints\n");
-            iws.currState = InteractiveWitnessState<width, height>::kBetweenPoints;
-            iws.frac = 0;
-
-            int len = static_cast<int>(iws.ws.path.size());
-
-            if (len >= 2 && iws.target == iws.ws.path[len - 2]) // going backwards
+            // If it's over 10% then count it - from N
+            if ((end.x == nextTarget.x && (mouseLoc.y - end.y) / (nextTarget.y - end.y) >= 0.1) || // tracking in y
+                    (end.y == nextTarget.y && (mouseLoc.x - end.x) / (nextTarget.x - end.x) >= 0.1)) // tracking in x
             {
+
+                // 2. Add to target location
                 iws.target = iws.ws.path.back();
-                InvertAction(iws.targetAct);
-                iws.frac = 1.0;
-                UndoAction(iws.ws, a);
-                // printf("Switched from kInPoint to kBetweenPoints [backwards]\n");
+
+                std::cout << "\n\tApplying action " << a << " from " << iws.target.first << ", " << iws.target.second;
+                std::pair<int, int> before = iws.target;  // position before applying
+
+
+                ApplyAction(iws.target, a);
+
+
+                // shows all directional updates 
+                PrintRuleUpdates();
+                std::pair<int,int> after = iws.target;
+
+                std::cout << "\nprev: " << prevNode.first << ", " << prevNode.second;
+                std::cout << "\ncurr bfr: " << currNode.first << ", " << currNode.second;
+
+                // when you reach a new node
+                bool reachedNewNode = (after != currNode);
+
+                // q
+                witnessMoveQueue.push({currNode, after, a, false});
+                
+
+
+                // update priors only after actually reaching a new node
+                if (reachedNewNode)
+                {
+                    int actionTaken = static_cast<int>(a);
+
+
+                    // nothing
+                    {
+                        
+                        // uncomment
+                        
+                        // for (int ruleID = 0; ruleID < 6; ++ruleID)
+                        // {
+                        //     if (!ruleUpdates[ruleID].empty() && ruleUpdates[ruleID][actionTaken] > 0.0)
+                        //     {
+                                
+                        //         if(ruleUpdates[ruleID][actionTaken] != 0.05)
+                        //         {
+
+                        //             pendingRuleUpdates[ruleID][actionTaken] = ruleUpdates[ruleID][actionTaken];
+
+
+
+                        //             std::cout << "\n\tStored pending PriR[" << ruleID << "] = "
+                        //                     << pendingRuleUpdates[ruleID][actionTaken] 
+                        //                     << " for action " << a;
+
+                        //         }
+                        //         else
+                        //         {
+                        //             std::cout << "\nadded a line to ignore 0.05 updates - to check";
+                        //         }
+                        //     }
+                        // }
+
+
+                        // clear/reset updates for next node
+                        // for (auto& inner : ruleUpdates)
+                        //     std::fill(inner.begin(), inner.end(), 0.0);
+
+                        // update globals
+                        prevNode = currNode;
+                        currNode = after;
+
+                        // update state
+                        toggleMakeTruthTable = 1;
+                        iws.targetAct = a;
+                        iws.currState = InteractiveWitnessState<width, height>::kBetweenPoints;
+                        iws.frac = 0;
+
+                        std::cout << "\n\tTarget set to " << after.first << ", " << after.second
+                                << " act: " << a << "\n";
+
+
+
+                        std::cout << "\n[array_priors]:\n";
+                        for (int i = 0; i < 6; ++i) 
+                        {
+                            if(i%2==0)
+                                std::cout << "\t"; //better readability
+                            if(i!=1)
+                                std::cout << "PriR[" << i << "] = " << array_priors[i] << "\n";
+                            else
+                                std::cout << "PriR[1] is irrlevant\n";
+
+                        }
+
+                    }
+
+                }
+
+
+            
+                
+                // shows all directional updates 
+                //PrintRuleUpdates();
+
+                
+                toggleMakeTruthTable = 1; 
+
+                iws.targetAct = a;
+
+
+                std::cout << "\n\tTarget set to " << iws.target.first << ", " << iws.target.second << " act: " << a << "\n";
+
+                // 3. Change state
+                // printf("Switched from kInPoint to kBetweenPoints\n");
                 iws.currState = InteractiveWitnessState<width, height>::kBetweenPoints;
+                iws.frac = 0;
+
+                int len = static_cast<int>(iws.ws.path.size());
+
+                std::cout << "\n\t";
+
+
+                //std::cout << "\n--------------\nSHOW RULE 0 UDP FOR DIR 0 [UP]: \n" 
+                // << update_rule_0 << "\n--------------\n";
+        
+                // [uncomment]
+                //PrintRuleUpdates(); // prints the updates without clearing prev ones - gives wrong numbers thus
+
+                if (len >= 2 && iws.target == iws.ws.path[len - 2]) // going backwards
+                {
+                    backtrack_on = true;
+
+                    // this is just the prob from the last row (with all rules active) 
+                    // std::cout << "\n[not logged] bckT bfr calc: " << backtrack_prob; 
+                    
+                    // checking to see if I get the backtrack dir prob
+                    // std::cout << "\n[not logged] bckT aftr calc: " << ruleUpdates[0][6]; // uncomment
+
+                    // backtrack_prob = ruleUpdates[0][6]; 
+                    
+
+                    int actionTaken = static_cast<int>(a);
+
+                    for (int ruleID = 0; ruleID < 6; ++ruleID)
+                    {
+                        // if (!ruleUpdates[ruleID].empty() && ruleUpdates[ruleID][actionTaken] > 0.0)
+                        // {
+                        //     pendingRuleUpdates[ruleID][actionTaken] = backtrack_prob; 
+                        //     std::cout << "\n\tStored pending PriR[" << ruleID << "] = "
+                        //             << pendingRuleUpdates[ruleID][actionTaken] 
+                        //             << " for action " << a;
+
+                            
+                            
+                        // }
+
+
+                        
+                    }
+
+
+
+                    // std::cout << "\n[Witness.h] Bck prob: " << backtrack_prob;
+                    backtrack_act = a;
+
+                    backtrack_on = false; 
+                    
+
+                    
+
+                    iws.target = iws.ws.path.back();
+                    InvertAction(iws.targetAct);
+                    iws.frac = 1.0;
+                    UndoAction(iws.ws, a);
+                    
+                    std::cout << "\n[not logged] Witness.h BackTrack: " << a << "\t";
+                    witnessMoveQueue.push({before, after, a, true}); // if it doesn't match any of the given dirs with probs, then assume it's a backtrack case???
+
+                    // printf("Switched from kInPoint to kBetweenPoints [backwards]\n");
+                    iws.currState = InteractiveWitnessState<width, height>::kBetweenPoints;
+                }
+
+                // safe to clwaar 
+                // SAFE PLACE TO CLEAR ruleUpdates // check again // uncomment
+                // for (auto &inner : ruleUpdates)
+                //     std::fill(inner.begin(), inner.end(), 0.0);
+
+
+
+
             }
+
+            
+            
         }
+
+       // std::cout << "\n[Witness.h] Clearing ruleUpdates";
+        //if(!ruleUpdates.empty()) 
+            //ruleUpdates.clear();
+        // for (auto& inner : ruleUpdates) {
+        //    // std::fill(inner.begin(), inner.end(), 0.0); // "clearing" out the vector
+        // }
+
 
         return;
     }
 
     if (iws.currState == InteractiveWitnessState<width, height>::kBetweenPoints)
     {
+        
+
+        
+
         Graphics::point from = GetScreenCoord(iws.ws.path.back().first, iws.ws.path.back().second);
         Graphics::point to = GetScreenCoord(iws.target.first, iws.target.second);
 
@@ -4084,6 +4350,55 @@ void Witness<width, height>::Move(Graphics::point mouseLoc, InteractiveWitnessSt
             iws.currState = InteractiveWitnessState<width, height>::kInPoint;
             ApplyAction(iws.ws, iws.targetAct);
             //			printf("Switched from kBetweenPoints to kInPoint [1]\n");
+
+
+
+            // ===== COMMIT pendingRuleUpdates =====
+for (int ruleID = 0; ruleID < 6; ++ruleID)
+{
+    for (int dir = 0; dir < 7; ++dir)
+    {
+        double pend = pendingRuleUpdates[ruleID][dir];
+        if (pend > 0.0)
+        {
+            array_priors[ruleID] = pend;
+
+            std::cout << "\nCommitted PriR[" << ruleID << "] = "
+                      << pend << " (dir " << dir << ")";
+        }
+    }
+}
+
+// ===== CLEAR pendingRuleUpdates =====
+for (auto &row : pendingRuleUpdates)
+    row.fill(0.0);
+
+            
+
+            // PUT THIS IN A FUNC or something because we want to update without clutter
+ // apply pending updates only when I reach a new node - MAIN issue here 
+        // i'm still seeing premature updates
+    // for (int ruleID = 0; ruleID < 6; ++ruleID)
+    // {
+    //     for (int dir = 0; dir < 6; ++dir)
+    //     {
+    //         if (pendingRuleUpdates[ruleID][dir] > 0.0)
+    //         {
+    //             array_priors[ruleID] = pendingRuleUpdates[ruleID][dir];
+    //             std::cout << "\n\tCommitted PriR[" << ruleID << "] = "
+    //                       << array_priors[ruleID] << " at new node\n";
+    //             pendingRuleUpdates[ruleID][dir] = 0.0;
+    //         }
+    //     }
+    // }
+
+    // // Clear pending updates for next move
+    // for (auto& inner : pendingRuleUpdates)
+    //     std::fill(inner.begin(), inner.end(), 0.0);
+
+
+
+
         }
         else if (from.x == to.x && (mouseLoc.y - from.y) / (to.y - from.y) > 0.9 &&
                  Legal(iws.ws, iws.targetAct)) // tracking in y
@@ -4091,6 +4406,16 @@ void Witness<width, height>::Move(Graphics::point mouseLoc, InteractiveWitnessSt
             iws.currState = InteractiveWitnessState<width, height>::kInPoint;
             ApplyAction(iws.ws, iws.targetAct);
             //			printf("Switched from kBetweenPoints to kInPoint [2]\n");
+
+
+
+
+
+
+
+
+
+
         }
         else if (from.y == to.y && (mouseLoc.x - from.x) / (to.x - from.x) > 0.9 &&
                  Legal(iws.ws, iws.targetAct)) // tracking in x
@@ -4098,22 +4423,67 @@ void Witness<width, height>::Move(Graphics::point mouseLoc, InteractiveWitnessSt
             iws.currState = InteractiveWitnessState<width, height>::kInPoint;
             ApplyAction(iws.ws, iws.targetAct);
             //			printf("Switched from kBetweenPoints to kInPoint [3]\n");
+
+
+
+
+
+
+
+
+
+
+
+
+
         }
             // entered start
         else if (Graphics::PointInRect(mouseLoc, Graphics::rect(from, lineWidth)))
         {
             iws.currState = InteractiveWitnessState<width, height>::kInPoint;
             //			printf("Switched from kBetweenPoints to kInPoint [backtrack:1]\n");
+
+
+
+
+    
+
+
+
+
+
+
         }
         else if (from.x == to.x && (mouseLoc.y - from.y) / (to.y - from.y) < 0.1) // tracking in y
         {
             iws.currState = InteractiveWitnessState<width, height>::kInPoint;
             //			printf("Switched from kBetweenPoints to kInPoint [backtrack:2]\n");
+
+
+
+
+
+
+
+
+
+
         }
         else if (from.y == to.y && (mouseLoc.x - from.x) / (to.x - from.x) < 0.1) // tracking in x
         {
             iws.currState = InteractiveWitnessState<width, height>::kInPoint;
             //			printf("Switched from kBetweenPoints to kInPoint [backtrack:3]\n");
+
+
+
+
+
+
+
+
+
+
+
         }
 
         // If still tracking, update track distance

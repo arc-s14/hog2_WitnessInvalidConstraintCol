@@ -76,10 +76,20 @@ int TruthTable_COL = 10;
 int MOVE_COL = kWitnessActionCount;
 int RULE_COL = 4; //violation, correct move, percentage based on occurence or something- so 3 cols //+1 for perc of skill
 
+
 // working vectors
 std::vector < std::vector <std::string>> MoveTable (RULE_ROW, std::vector<std::string>(MOVE_COL,".")); // shows the must_cross & cant_cross info for rules
+//std::vector < std::vector <std::string>> PrevMoveTable (RULE_ROW, std::vector<std::string>(MOVE_COL,".")); // shows the must_cross & cant_cross info for rules
+
 std::vector < std::vector <float>> UpdateTable (RULE_ROW, std::vector<float>(TruthTable_COL, 0));
 std::vector < std::vector <int>> RuleTable (RULE_ROW, std::vector<int>(RULE_COL,0));
+
+std::vector < std::vector <double>> ProbTable (RULE_ROW, std::vector<double>(MOVE_COL, -1.0)); // shows the must_cross & cant_cross info for rules
+
+
+//std::vector<std::vector<double>> ruleUpdates(RULE_ROW, std::vector<double>(MOVE_COL, 0.0));
+//std::vector<std::vector<double>> ruleUpdates(6, std::vector<double>(7, 0.0)); // uncomment
+
 
 int whichPuzzle = 0; // variable we'll use to increment the puzzle
 int puzzleNum = 8; // fix at 8 if we have 8 puzzles
@@ -1303,6 +1313,8 @@ void PrintTable(const std::vector<std::vector<std::string>>& table,
 	if (table.empty()) return;
 
 
+	
+
 	for (int row = table.size() - 1; row >= 0; --row) 
 	{ 
 		double cellY = y - ((table.size() - row) * cellHeight); // rev row order
@@ -1350,7 +1362,13 @@ void PrintTable(const std::vector<std::vector<std::string>>& table,
 				}
 				else 
 				{
-					d.DrawText((table[row][col]).c_str(), {static_cast<float>(cellX+shift_icons), static_cast<float>(cellY)}, rule_color, fontSize, 0);
+					if(std::find(possibleDirs.begin(), possibleDirs.end(), col) != possibleDirs.end()) 
+						rule_color = Colors::black; // if col/dir is active, color in black
+					else
+						rule_color = Colors::yellow; 
+					
+					d.DrawText((table[row][col]).c_str(), {static_cast<float>(cellX+shift_icons), 
+								static_cast<float>(cellY)}, rule_color, fontSize, 0);
 				}
 			}
 		}
@@ -1365,7 +1383,8 @@ void PrintTable(const std::vector<std::vector<std::string>>& table,
 
 	//print col headers (LAST, so they appear on top)
 	double headerY = y - ((table.size() + 1) * cellHeight); //slightly above the first row
-	for (int col = 0; col < static_cast<int>(table[0].size()); ++col) {
+	for (int col = 0; col < static_cast<int>(table[0].size()); ++col) 
+	{
 		double cellX = x + (col + 1) * cellWidth; //offset row headers
 		d.DrawText(colHeaders[col].c_str(), {static_cast<float>(cellX), static_cast<float>(headerY)}, Colors::darkblue, fontSize, 0);
 	}
@@ -1382,7 +1401,116 @@ void PrintTable(const std::vector<std::vector<std::string>>& table,
 
 
 
+void PrintPriors(const double arr[6],
+                      Graphics::Display &d,
+                      const Graphics::point& startPoint,
+                      double fontSize,
+                      double cellHeight)
+{
+    double x = startPoint.x;
+    double y = startPoint.y;
 
+    for (int row = 5; row >= 0; --row)
+    {
+        rgbColor txt_col = Colors::darkpurple;
+
+        // ignore rule 1 // not relevant for us 
+        
+        if (row % 2 == 0)
+            txt_col = Colors::darkred;
+        else if (row == 0)
+            txt_col = Colors::darkpurple;
+		if (row == 1)
+		{
+			y -= cellHeight/4.0;
+			continue;
+		}
+
+        std::ostringstream oss;
+        oss << GetRuleNameByID(row) << " : ";
+        oss << std::right << std::setw(5)
+            << std::fixed << std::setprecision(4)
+            << arr[row];
+
+
+		std::string text = oss.str();
+
+		d.DrawText(text.c_str(), {static_cast<float>(x), static_cast<float>(y)}, txt_col, fontSize, 0);
+
+
+        y -= cellHeight;
+    }
+
+    // Driver output (optional)
+    for (int r = 0; r < 6; r++)
+    {
+        double v = arr[r];
+        // std::cout << "r" << r << ": " << std::fixed << std::setprecision(4) << v << "\n";
+    }
+}
+
+
+
+void oldPrintDoubleTable(const std::vector<std::vector<double>>& table,
+                      Graphics::Display &d,
+                      const Graphics::point& startPoint,
+                      double fontSize,
+                      double cellWidth,
+                      double cellHeight,
+                      double timer = 0.0,
+                      int T_row = -1,
+                      int T_col = -1,
+                      const std::vector<int>& possibleDirs = {},
+                      int cX = -1,
+                      int cY = -1) 
+{
+    
+	
+	const std::vector<std::string> ruleNames = {"R0", "R1", "R2", "R3", "R4", "R5"};
+    double x = startPoint.x;
+    double y = startPoint.y;
+
+	for (int row = static_cast<int>(table.size()) - 1; row >= 0; --row) 
+	{
+		rgbColor txt_col = Colors::darkpurple;
+
+		// ignore the 2nd rule as it's not relevant to our case
+		if(row == 1)
+			continue;
+			//txt_col = Colors::white;
+		else if(row % 2 == 0)
+			txt_col = Colors::darkred;
+		if(row == 0)
+			txt_col = Colors::darkpurple;
+
+		std::ostringstream oss;
+		oss <<  (GetRuleNameByID(row) + " : ");
+
+		// last val/ latest val
+		if (!table[row].empty()) {
+			size_t lastCol = table[row].size() - 1;
+			oss <<  std::right << std::setw(5) << std::fixed << std::setprecision(4) << table[row][lastCol];
+		}
+
+		std::string text = oss.str();
+		d.DrawText(text.c_str(), {static_cast<float>(x), static_cast<float>(y)}, txt_col, fontSize, 0);
+
+		y -= cellHeight; // move down for next row
+	}
+
+	
+	// driver output // needs to be on the file 
+	// std::cout << "\npriors\n";
+	for (size_t r = 0; r < table.size(); r++) {
+    if (!table[r].empty()) {
+        double lastVal = table[r].back();
+        // std::cout << "r" << r << ": " << std::fixed << std::setprecision(4) << lastVal << "\n";
+
+    }
+}
+
+
+}
 
 
 
@@ -1520,8 +1648,19 @@ void MyWindowHandler(unsigned long windowID, tWindowEventType eType)
 		// puzzle 1
 		tmp44w.ClearSeparationConstraints();
 		
-		tmp44w.AddSeparationConstraint(0, 1, Colors::black);
-		tmp44w.AddSeparationConstraint(2, 1, Colors::bluegreen);
+		//tmp44w.AddSeparationConstraint(0, 1, Colors::black);
+		//tmp44w.AddSeparationConstraint(2, 1, Colors::bluegreen);
+
+		tmp44w.ClearSeparationConstraints();
+
+		tmp44w.AddSeparationConstraint(2, 1, Colors::red);
+		tmp44w.AddSeparationConstraint(2, 2, Colors::blue);
+
+		// tmp44w.AddSeparationConstraint(2, 1, Colors::green);
+		// tmp44w.AddSeparationConstraint(2, 2, Colors::orange);
+
+		// tmp44w.AddSeparationConstraint(1, 1, Colors::green);
+		// tmp44w.AddSeparationConstraint(1, 2, Colors::orange); 
 
 		puzzleSet[0].push_back(tmp44w);
 
@@ -1671,8 +1810,9 @@ void MyFrameHandler(unsigned long windowID, unsigned int viewport, void *)
 
 
 
-
-
+//oct21
+int ss_rules_count = 0; // reset count each frame
+static int count_toggle_TT = 0; // show Truth Table only once
 
 void MySecondFrameHandler(unsigned long windowID, unsigned int viewport, void *)
 {
@@ -1708,7 +1848,10 @@ void MySecondFrameHandler(unsigned long windowID, unsigned int viewport, void *)
 	if(iws.currState == iws.kInPoint)
 		table_calc = true;
 
+
+	
 	PrintTable(MoveTable, disp, -0.75, 0.05f, 0.2f, 0.1f, 7, RULE_ROW, MOVE_COL, possibleDirs, frame_currX, frame_currY, table_calc);
+	PrintPriors(array_priors, disp, {static_cast<float>(-0.75), static_cast<float>(0.5)}, 0.05f, 0.1f);
 
 	// setting up the priors (i'm using prior and posterior interchangeably)
 	std::vector<int> activeRules = {0, 1, 2, 3, 4, 5}; // hardcoded for 6 rules // changed to index
@@ -1736,18 +1879,20 @@ void MySecondFrameHandler(unsigned long windowID, unsigned int viewport, void *)
 		loggedRules.clear(); // clear previous node logs
 	}
 
-	//
+	// make the table in Driver.cpp??
+
+	int count_loop = 0; // to limit how many updates we show until the final one for every node/ puzzle instance
+	std::string lastBlock; // global or static to persist across frames
 
 	for (const auto& action : actions) 
 	{
+		ProbTable.assign(RULE_ROW, std::vector<double>(MOVE_COL, -1));
+
 		ActionType overallResult = UNKNOWN;
 
 		for (const auto& [ruleID, ruleFunction] : witIRs<puzzleWidth, puzzleHeight>) 
 		{
-			
 			ActionType result = ruleFunction(w, iws.ws, action);
-
-			
 
 			if (result == MUST_TAKE) 
 			{
@@ -1765,19 +1910,32 @@ void MySecondFrameHandler(unsigned long windowID, unsigned int viewport, void *)
 					<< " | action: " << action
 					<< " | result: " << "MUST_TAKE";
 					std::cout << ss.str();
-				}
-					//std::cout<<"rID: "<<ruleID<<" , actVal: "<<actionValue;
-					MoveTable[ruleID][actionValue] = "M"; //this is showing M so we can log- curr pos AND rule broken here //ideas//working
-					//RuleTable[ruleID][0] += 1; // this is tracking count, not violation or occurence
 
-					bool table_calc = false;
-					if(iws.currState == iws.kInPoint)
-						table_calc = true;
-					
-					//PrintDoubleTable(rules_p, disp, {static_cast<float>(-0.75), static_cast<float>(0.5)}, 0.05f, 0.2f, 0.1f);
-					
+					ss_rules_count = 0;
+				}
+				//std::cout<<"rID: "<<ruleID<<" , actVal: "<<actionValue;
+				MoveTable[ruleID][actionValue] = "M"; //this is showing M so we can log- curr pos AND rule broken here //ideas//working
+				//RuleTable[ruleID][0] += 1; // this is tracking count, not violation or occurence
+
+				bool table_calc = false;
+				if(iws.currState == iws.kInPoint)
+					table_calc = true;
 				
-				PrintTable(MoveTable, disp, -0.75, 0.05f, 0.2f, 0.1f, 7, RULE_ROW, MOVE_COL, possibleDirs, frame_currX, frame_currY, table_calc);
+
+				PrintPriors(array_priors, disp, {static_cast<float>(-0.75), static_cast<float>(0.5)}, 0.05f, 0.1f);
+
+				
+
+				
+				printQueue(witnessMoveQueue); // can use this to update the rule but I also need a table first
+				// bool startBool = false;
+				// if(frame_currX == 0 && frame_currY == 0)
+				// 	startBool = true;
+
+
+
+				//if(!startBool)
+					PrintTable(MoveTable, disp, -0.75, 0.05f, 0.2f, 0.1f, 7, RULE_ROW, MOVE_COL, possibleDirs, frame_currX, frame_currY, table_calc);
 
 			} 
 			else if (result == CANNOT_TAKE) 
@@ -1792,6 +1950,8 @@ void MySecondFrameHandler(unsigned long windowID, unsigned int viewport, void *)
 						<< " | action: " << action
 						<< " | result: " << "CANT_TAKE";
 						std::cout << ss.str();
+
+						ss_rules_count = 0;
 					}
 					//normal case
 					MoveTable[ruleID][actionValue] = "C"; 
@@ -1800,31 +1960,104 @@ void MySecondFrameHandler(unsigned long windowID, unsigned int viewport, void *)
 					if(iws.currState == iws.kInPoint)
 						table_calc = true;
 					
-				
+				printQueue(witnessMoveQueue); // can use this to update the rule
+				// bool startBool = false;
+				// if(frame_currX == 0 && frame_currY == 0)
+				// 	startBool = true;
+
+				//if(!startBool)
 				PrintTable(MoveTable, disp, -0.75, 0.05f, 0.2f, 0.1f, 7, RULE_ROW, MOVE_COL, possibleDirs, frame_currX, frame_currY, table_calc);
+				PrintPriors(array_priors, disp, {static_cast<float>(-0.75), static_cast<float>(0.5)}, 0.05f, 0.1f);
 
 			}
 
 
 			
+			// [moved already] [start] move this whole snippet out so both Cant and Must can use it without cluttering up this space
+
+			// build string log
+			std::stringstream ss_rules; // shows the must_cross and cant_cross status for rules
+
+			// before UpdateProbTableAndLog I had everything here
+			
+			UpdateProbTableAndLog(possibleDirs, MoveTable, ProbTable, RULE_ROW, MOVE_COL, lastBlock);
+
+			// print prob table for debugging
+			ss_rules << "\n\n\t[Probability Table]\n\tUp\tDown\tLeft\tRight\tStr\tEnd\n";
+			for(int i=0; i<RULE_ROW; i++)
+			{
+				ss_rules << "R-" << i << ":\t";
+				for(int j=0; j<MOVE_COL; j++)
+				{	
+					if(ProbTable[i][j] != -1.0) 
+						ss_rules << ProbTable[i][j] << "\t";
+					else
+						ss_rules << ".\t";
+				}
+				ss_rules << std::endl;
+			}
+			
+			// Could remove some redundancy here with ss_rules and last_block but for now it's fine
+			if (ss_rules_count++ < 1) 
+			{
+				// std::cout << "\n\n\t\t[---Clearing---] " << ++count_loop;
+				if(ss_rules.str().empty() == false)
+				{
+					// std::cout << ss_rules.str(); // prints every directional update for rules, one rule-dir at a time
+					lastBlock = ss_rules.str();
+					ss_rules.str("");
+					ss_rules.clear();  // this resets flags
+				}
+			}
+
+			// [moved already] [end pt-1] move this whole snippet out 
+
 		}
-	}			
+		
+		
+		
+		//std::cout << "\n[Witness.h] Calling MakeTruthTable";
+		//MakeTruthTable(possibleDirs, MoveTable, ProbTable, RULE_ROW, MOVE_COL, lastBlock, count_toggle_TT++); // incessant calls
 
+		
+	}				
+	// prints the last directional update for rules
+	if (!lastBlock.empty())
+	{
+		std::cout << "\n\n\t\t[---Clearing---] [ProbTable] " << ++count_loop << std::endl;
+		//print21
+		//std::cout << lastBlock;
+		lastBlock.clear();
+	}
+	// [moved already] [end pt-2] move this whole snippet out 
 
-
+	//std::cout << "\nwitnessMoveQueue size: " << witnessMoveQueue.size();
 	// process all new moves that Witness.h captured
 	while (!witnessMoveQueue.empty()) 
 	{
 		WitnessMove move = witnessMoveQueue.front();
 		witnessMoveQueue.pop(); // remove as we process
-
+		std::cout << "\nwitnessMoveQueue size: " << witnessMoveQueue.size();
+		//print21
+		/*
 		std::cout << "\n\ncaptured move: (" 
 				<< move.posBefore.first << "," << move.posBefore.second 
 				<< ") to (" << move.posAfter.first << "," << move.posAfter.second 
-				<< ") action: " << move.action << std::endl;
+				<< ")\t[b]: " << move.isBacktrack 
+				<< " action: " << move.action << std::endl;
+		*/
+		// add math here
 
-		// add mathe here
+		count_toggle_TT = 0;
 	}
+
+	//oct21
+	//std::cout << "\n[Witness.h] Clearing ruleUpdates";
+	// for (auto& inner : ruleUpdates) {
+	// 	//std::fill(inner.begin(), inner.end(), 0.0);
+	// }
+	//std::cout << "\n[Witness.h] Calling MakeTruthTable";
+	MakeTruthTable(possibleDirs, MoveTable, ProbTable, RULE_ROW, MOVE_COL, lastBlock, count_toggle_TT++); // incessant calls
 
 
 

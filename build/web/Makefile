@@ -31,6 +31,7 @@ PROJECTS = \
   demos/STP \
   demos/witness \
   demos/witness3 \
+  demos/witnessplmodel \
   demos/transit-routing-maps \
   demos/gridabstraction \
   demos/JPS \
@@ -51,7 +52,7 @@ PROJECTS = \
   demos/ACA \
   papers/DWA \
   papers/FMDH \
-  papers/TheWitnessEditor
+#  papers/TheWitnessEditor
 
 # Include projects with broken compilation
 PROJECTS_ALL = \
@@ -71,7 +72,6 @@ PROJECTS_ALL = \
   shared \
   simulation \
   utils \
-  demos/witness3 \
   demos/pancake \
   apps/arm \
   apps/airplane \
@@ -102,9 +102,10 @@ PROJECTS_ALL = \
   demos/astar \
   demos/idastar \
   demos/multi-target \
+  demos/witnessplmodel \
   papers/ACA \
   papers/DWA \
-  papers/TheWitnessEditor
+#  papers/TheWitnessEditor
 
 # sequentially to avoid same sub-target in sub-make invoked twice
 default:
